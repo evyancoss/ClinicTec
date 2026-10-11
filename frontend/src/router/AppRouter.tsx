@@ -8,7 +8,7 @@ import { MisPacientesPage } from "../features/medico/MisPacientesPage";
 import { DashboardPage } from "../features/admin/DashboardPage";
 import { UsuariosPage } from "../features/admin/UsuariosPage";
 import { ClinicasPage } from "../features/admin/ClinicasPage";
-import { useDemo } from "../store/DemoContext";
+import { useDemo } from "../store/demo-context";
 import type { ReactNode } from "react";
 
 // ─── Guard visual de demostración ────────────────────────────────────────────

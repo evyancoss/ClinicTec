@@ -13,6 +13,8 @@ class TestListarMedicos:
         })
         assert resp.status_code == 200
         assert isinstance(resp.get_json()["data"], list)
+        assert resp.get_json()["data"][0]["nombre_clinica"] == "Clínica Demo"
+        assert "id_usuario" not in resp.get_json()["data"][0]
 
     def test_admin_puede_listar(self, client, token_admin, usuario_medico):
         resp = client.get("/api/medicos/", headers={
@@ -47,6 +49,8 @@ class TestMiPerfilMedico:
         data = resp.get_json()["data"]
         assert "id_medico" in data
         assert "especialidad" in data
+        assert "nombre_clinica" in data
+        assert "id_usuario" not in data
 
     def test_recepcion_no_puede_acceder_a_yo(self, client, token_recepcion):
         resp = client.get("/api/medicos/yo", headers={

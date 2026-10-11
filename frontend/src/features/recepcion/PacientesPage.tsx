@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { Search, UserPlus, Eye, Edit, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
@@ -17,7 +17,8 @@ import {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function calcularEdad(fechaNac: string): number {
   const hoy = new Date();
-  const nac = new Date(fechaNac);
+  const [anio, mes, dia] = fechaNac.split("-").map(Number);
+  const nac = new Date(anio, mes - 1, dia);
   let edad = hoy.getFullYear() - nac.getFullYear();
   const m = hoy.getMonth() - nac.getMonth();
   if (m < 0 || (m === 0 && hoy.getDate() < nac.getDate())) edad--;
@@ -35,6 +36,7 @@ export function PacientesPage() {
   const [pagina, setPagina]             = useState(1);
   const [busqueda, setBusqueda]         = useState("");
   const [busquedaInput, setBusquedaInput] = useState("");
+  const [recarga, setRecarga]           = useState(0);
   const [cargando, setCargando]         = useState(false);
   const [errorApi, setErrorApi]         = useState<string | null>(null);
 
@@ -54,26 +56,39 @@ export function PacientesPage() {
   }
 
   // ─── Cargar pacientes ─────────────────────────────────────────────────────
-  const cargar = useCallback(async () => {
-    setCargando(true);
-    setErrorApi(null);
-    const resp = await pacientesService.listar(pagina, 20, busqueda);
-    setCargando(false);
-    if (resp.error || !resp.data) {
-      setErrorApi(resp.error ?? "Error al cargar pacientes.");
-      return;
+  useEffect(() => {
+    let vigente = true;
+
+    async function cargar() {
+      await Promise.resolve();
+      if (!vigente) return;
+
+      setCargando(true);
+      setErrorApi(null);
+      const resp = await pacientesService.listar(pagina, 20, busqueda);
+      if (!vigente) return;
+
+      setCargando(false);
+      if (resp.error || !resp.data) {
+        setPacientes([]);
+        setPaginacion(null);
+        setErrorApi(resp.error ?? "Error al cargar pacientes.");
+        return;
+      }
+      setPacientes(resp.data.pacientes);
+      setPaginacion(resp.data.paginacion);
     }
-    setPacientes(resp.data.pacientes);
-    setPaginacion(resp.data.paginacion);
-  }, [pagina, busqueda]);
 
-  useEffect(() => { cargar(); }, [cargar]);
-
-  // Reiniciar página al buscar
-  useEffect(() => { setPagina(1); }, [busqueda]);
+    void cargar();
+    return () => {
+      vigente = false;
+    };
+  }, [pagina, busqueda, recarga]);
 
   function handleBuscar() {
-    setBusqueda(busquedaInput.trim());
+    const nuevaBusqueda = busquedaInput.trim();
+    if (busqueda !== nuevaBusqueda) setBusqueda(nuevaBusqueda);
+    if (pagina !== 1) setPagina(1);
   }
 
   // ─── Crear paciente ───────────────────────────────────────────────────────
@@ -87,7 +102,7 @@ export function PacientesPage() {
     }
     setModalNuevo(false);
     mostrarToast(`Paciente "${resp.data.nombre} ${resp.data.ape_paterno}" registrado.`);
-    cargar();
+    setRecarga((actual) => actual + 1);
   }
 
   // ─── Editar paciente ──────────────────────────────────────────────────────
@@ -102,7 +117,7 @@ export function PacientesPage() {
     }
     setPacienteEditar(null);
     mostrarToast("Paciente actualizado correctamente.");
-    cargar();
+    setRecarga((actual) => actual + 1);
   }
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -143,7 +158,11 @@ export function PacientesPage() {
             Buscar
           </Button>
           {busqueda && (
-            <Button variante="ghost" onClick={() => { setBusqueda(""); setBusquedaInput(""); }}>
+            <Button variante="ghost" onClick={() => {
+              setBusquedaInput("");
+              if (busqueda) setBusqueda("");
+              if (pagina !== 1) setPagina(1);
+            }}>
               Limpiar
             </Button>
           )}
@@ -167,7 +186,7 @@ export function PacientesPage() {
           </span>
         </div>
 
-        {cargando ? (
+        {errorApi ? null : cargando ? (
           <div className="py-16 text-center text-sm text-gray-400">Cargando pacientes…</div>
         ) : pacientes.length === 0 ? (
           <EstadoVacio
@@ -175,7 +194,11 @@ export function PacientesPage() {
             descripcion={busqueda ? "Intenta con otro nombre." : "Aún no hay pacientes registrados."}
             accion={
               busqueda ? (
-                <Button variante="secondary" onClick={() => { setBusqueda(""); setBusquedaInput(""); }}>
+                <Button variante="secondary" onClick={() => {
+                  setBusquedaInput("");
+                  if (busqueda) setBusqueda("");
+                  if (pagina !== 1) setPagina(1);
+                }}>
                   Ver todos
                 </Button>
               ) : undefined

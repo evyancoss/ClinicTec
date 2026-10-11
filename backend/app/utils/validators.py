@@ -12,7 +12,11 @@ from datetime import date
 
 def validar_texto(valor: str | None, campo: str, max_len: int = 255,
                   requerido: bool = True) -> str | None:
-    if not valor or not valor.strip():
+    if valor is None or valor == "":
+        return f"{campo} es requerido." if requerido else None
+    if not isinstance(valor, str):
+        return f"{campo} debe ser texto."
+    if not valor.strip():
         return f"{campo} es requerido." if requerido else None
     if len(valor.strip()) > max_len:
         return f"{campo} no puede superar {max_len} caracteres."
@@ -20,6 +24,10 @@ def validar_texto(valor: str | None, campo: str, max_len: int = 255,
 
 
 def validar_nombre(valor: str | None, campo: str = "Nombre") -> str | None:
+    if valor is None or valor == "":
+        return validar_texto(valor, campo, max_len=100)
+    if not isinstance(valor, str):
+        return f"{campo} debe ser texto."
     err = validar_texto(valor, campo, max_len=100)
     if err:
         return err
@@ -31,8 +39,10 @@ def validar_nombre(valor: str | None, campo: str = "Nombre") -> str | None:
 # ── Fecha ──────────────────────────────────────────────────────────────────────
 
 def validar_fecha_nacimiento(valor: str | None) -> str | None:
-    if not valor:
+    if not isinstance(valor, str) or not valor:
         return "Fecha de nacimiento es requerida."
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", valor):
+        return "Fecha de nacimiento inválida. Use el formato AAAA-MM-DD."
     try:
         fecha = date.fromisoformat(valor)
     except ValueError:
@@ -50,8 +60,10 @@ def validar_fecha_nacimiento(valor: str | None) -> str | None:
 SEXOS_VALIDOS = {"Masculino", "Femenino", "Otro"}
 
 def validar_sexo(valor: str | None) -> str | None:
-    if not valor:
+    if valor is None or valor == "":
         return "Sexo es requerido."
+    if not isinstance(valor, str):
+        return "Sexo debe ser texto."
     if valor not in SEXOS_VALIDOS:
         return f"Sexo inválido. Valores permitidos: {', '.join(sorted(SEXOS_VALIDOS))}."
     return None
@@ -60,8 +72,12 @@ def validar_sexo(valor: str | None) -> str | None:
 # ── Teléfono ──────────────────────────────────────────────────────────────────
 
 def validar_telefono(valor: str | None) -> str | None:
-    if not valor:
+    if valor is None or valor == "":
         return None   # opcional
+    if not isinstance(valor, str):
+        return "Teléfono debe ser texto."
+    if len(valor.strip()) > 20:
+        return "Teléfono no puede superar 20 caracteres."
     limpio = re.sub(r"[\s\-\.\(\)\+]", "", valor)
     if not limpio.isdigit():
         return "Teléfono contiene caracteres no válidos."
@@ -73,8 +89,10 @@ def validar_telefono(valor: str | None) -> str | None:
 # ── Correo ────────────────────────────────────────────────────────────────────
 
 def validar_correo(valor: str | None) -> str | None:
-    if not valor:
+    if valor is None or valor == "":
         return None   # opcional
+    if not isinstance(valor, str):
+        return "Correo electrónico debe ser texto."
     if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]{2,}$", valor.strip()):
         return "Correo electrónico inválido."
     if len(valor.strip()) > 100:

@@ -21,15 +21,16 @@ Reglas:
 import logging
 from datetime import date as _date
 from flask import Blueprint, g, request
+from sqlalchemy.exc import IntegrityError
 
 from ..extensions import db
 from ..models.paciente import Paciente
 from ..models.cita import Cita
+from ..models.medico import Medico
 from ..schemas.responses import ok, error as err
 from ..utils.auth_decorators import (
     requiere_autenticacion,
     requiere_rol,
-    requiere_perfil_medico,
 )
 from ..utils.validators import (
     validar_nombre,
@@ -38,7 +39,6 @@ from ..utils.validators import (
     validar_telefono,
     validar_correo,
     validar_texto,
-    parse_paginacion,
 )
 
 log = logging.getLogger(__name__)
@@ -48,9 +48,19 @@ pacientes_bp = Blueprint("pacientes", __name__)
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def _validar_campos_paciente(body: dict, nuevo: bool = True) -> list[str]:
+_CAMPOS_PACIENTE = {
+    "nombre", "ape_paterno", "ape_materno", "fecha_nacimiento",
+    "sexo", "telefono", "correo", "direccion",
+}
+
+
+def _validar_campos_paciente(body: dict) -> list[str]:
     """Valida el body de creación/edición. Devuelve lista de errores."""
-    errores = []
+    errores = [
+        f"Campo no permitido: {campo}."
+        for campo in body
+        if campo not in _CAMPOS_PACIENTE
+    ]
 
     def _add(e): 
         if e: 
@@ -64,19 +74,57 @@ def _validar_campos_paciente(body: dict, nuevo: bool = True) -> list[str]:
     _add(validar_telefono(body.get("telefono")))
     _add(validar_correo(body.get("correo")))
 
-    direccion = body.get("direccion")
-    if direccion:
-        _add(validar_texto(direccion, "Dirección", max_len=255, requerido=False))
+    if "direccion" in body:
+        _add(validar_texto(
+            body["direccion"], "Dirección", max_len=255, requerido=False
+        ))
 
     return errores
 
 
-def _ids_pacientes_del_medico(id_medico: int) -> set[int]:
-    """Devuelve los id_paciente de citas asignadas al médico."""
-    filas = db.session.execute(
-        db.select(Cita.id_paciente).where(Cita.id_medico == id_medico).distinct()
-    ).all()
-    return {fila[0] for fila in filas}
+def _serializar_paciente(paciente: Paciente, medico: bool = False) -> dict:
+    """Devuelve solo los datos básicos necesarios para el rol solicitante."""
+    datos = paciente.to_dict()
+    datos.pop("fecha_registro", None)
+    datos.pop("estado", None)
+    if medico:
+        datos.pop("direccion", None)
+    return datos
+
+
+def _medico_del_usuario(usuario_id: int) -> Medico | None:
+    return db.session.execute(
+        db.select(Medico).where(Medico.id_usuario == usuario_id)
+    ).scalar_one_or_none()
+
+
+def _es_json_objeto(body) -> bool:
+    return isinstance(body, dict) and bool(body)
+
+
+def _registrar_integrity_error(operacion: str, exc: IntegrityError) -> None:
+    """Registra solo códigos y nombres de esquema, nunca SQL ni parámetros."""
+    original = exc.orig
+    diagnostico = getattr(original, "diag", None)
+
+    def _metadato(objeto, campo: str, max_len: int = 128) -> str | None:
+        valor = getattr(objeto, campo, None)
+        return valor[:max_len] if isinstance(valor, str) and valor else None
+
+    log.error(
+        "Error de integridad al %s paciente",
+        operacion,
+        extra={
+            "sqlstate": (
+                _metadato(original, "sqlstate", 5)
+                or _metadato(original, "pgcode", 5)
+            ),
+            "constraint_name": _metadato(diagnostico, "constraint_name"),
+            "schema_name": _metadato(diagnostico, "schema_name"),
+            "table_name": _metadato(diagnostico, "table_name"),
+            "column_name": _metadato(diagnostico, "column_name"),
+        },
+    )
 
 
 # ── GET /api/pacientes ────────────────────────────────────────────────────────
@@ -84,17 +132,39 @@ def _ids_pacientes_del_medico(id_medico: int) -> set[int]:
 @pacientes_bp.get("")
 @pacientes_bp.get("/")
 @requiere_autenticacion
-@requiere_rol("administrador", "recepcion")
 def listar_pacientes():
     """
     Lista pacientes con paginación y búsqueda por nombre/apellidos.
     Query params: pagina, por_pagina, busqueda
-    Solo accesible para recepción y administrador.
+    Los médicos solo reciben pacientes asociados a sus propias citas.
     """
-    pagina, por_pagina = parse_paginacion(request.args)
+    try:
+        pagina = int(request.args.get("pagina", "1"))
+        por_pagina = int(request.args.get("por_pagina", "20"))
+    except (TypeError, ValueError):
+        return err("La paginación debe usar números enteros.", 422)
+    if pagina < 1 or por_pagina < 1 or por_pagina > 100:
+        return err("Página debe ser positiva y por_pagina debe estar entre 1 y 100.", 422)
+
     busqueda = (request.args.get("busqueda") or "").strip()
+    if len(busqueda) > 100:
+        return err("La búsqueda no puede superar 100 caracteres.", 422)
 
     query = db.select(Paciente).where(Paciente.estado.is_(True))
+    usuario = g.usuario_actual
+    es_medico = usuario.rol == "medicos"
+
+    if es_medico:
+        medico = _medico_del_usuario(usuario.id_usuario)
+        if medico is None or not medico.estado:
+            return err("Perfil médico no encontrado o inactivo.", 403)
+        query = (
+            query.join(Cita, Cita.id_paciente == Paciente.id_paciente)
+            .where(Cita.id_medico == medico.id_medico)
+            .distinct()
+        )
+    elif usuario.rol not in ("administrador", "recepcion"):
+        return err("Acceso denegado.", 403)
 
     if busqueda:
         termino = f"%{busqueda}%"
@@ -119,7 +189,9 @@ def listar_pacientes():
     ).scalars().all()
 
     return ok({
-        "pacientes": [p.to_dict() for p in pacientes],
+        "pacientes": [
+            _serializar_paciente(p, medico=es_medico) for p in pacientes
+        ],
         "paginacion": {
             "pagina":      pagina,
             "por_pagina":  por_pagina,
@@ -138,35 +210,42 @@ def listar_pacientes():
 def crear_paciente():
     """Registra un nuevo paciente. Solo recepción y administrador."""
     body = request.get_json(silent=True)
-    if not body:
+    if not _es_json_objeto(body):
         return err("Se requiere un cuerpo JSON.", 400)
 
-    errores = _validar_campos_paciente(body, nuevo=True)
+    errores = _validar_campos_paciente(body)
+    print(errores)
     if errores:
-        return err(errores[0] if len(errores) == 1 else errores, 422)
+        return err("; ".join(errores), 422)
 
     paciente = Paciente(
         nombre=body["nombre"].strip(),
         ape_paterno=body["ape_paterno"].strip(),
         ape_materno=body["ape_materno"].strip(),
         fecha_nacimiento=_date.fromisoformat(body["fecha_nacimiento"]),
-        sexo=body["sexo"],
+        sexo="M", #body["sexo"]
         telefono=(body.get("telefono") or "").strip() or None,
         correo=(body.get("correo") or "").strip() or None,
         direccion=(body.get("direccion") or "").strip() or None,
         estado=True,
     )
 
-    try:
+    db.session.add(paciente)
+    db.session.commit()
+
+    '''try:
         db.session.add(paciente)
         db.session.commit()
+    except IntegrityError as exc:
+        db.session.rollback()
+        _registrar_integrity_error("crear", exc)
+        return err("Error al guardar el paciente. Intenta de nuevo.", 500)
     except Exception as exc:
         db.session.rollback()
         log.error("Error al crear paciente: %s", type(exc).__name__)
-        return err("Error al guardar el paciente. Intenta de nuevo.", 500)
+        return err("Error al guardar el paciente. Intenta de nuevo.", 500)'''
 
-    return ok(paciente.to_dict(), 201)
-
+    return ok(_serializar_paciente(paciente), 201)
 
 # ── GET /api/pacientes/<id> ───────────────────────────────────────────────────
 
@@ -178,28 +257,34 @@ def obtener_paciente(id_paciente: int):
     - Recepción/admin: cualquier paciente activo.
     - Médico: solo si tiene al menos una cita con ese paciente.
     """
-    paciente = db.session.get(Paciente, id_paciente)
-    if not paciente or not paciente.estado:
-        return err("Paciente no encontrado.", 404)
-
     usuario = g.usuario_actual
+    es_medico = usuario.rol == "medicos"
 
-    # Médico: verificar que el paciente le corresponde
-    if usuario.rol == "medicos":
-        from ..models.medico import Medico
-        medico = db.session.execute(
-            db.select(Medico).where(Medico.id_usuario == usuario.id_usuario)
+    if es_medico:
+        medico = _medico_del_usuario(usuario.id_usuario)
+        if medico is None or not medico.estado:
+            return err("Perfil médico no encontrado o inactivo.", 403)
+        paciente = db.session.execute(
+            db.select(Paciente)
+            .join(Cita, Cita.id_paciente == Paciente.id_paciente)
+            .where(
+                Paciente.id_paciente == id_paciente,
+                Paciente.estado.is_(True),
+                Cita.id_medico == medico.id_medico,
+            )
+            .limit(1)
         ).scalar_one_or_none()
-        if not medico:
-            return err("Perfil médico no encontrado.", 403)
-        ids_autorizados = _ids_pacientes_del_medico(medico.id_medico)
-        if id_paciente not in ids_autorizados:
+        if paciente is None:
             return err("No tienes autorización para ver este paciente.", 403)
 
-    elif usuario.rol not in ("administrador", "recepcion"):
+    elif usuario.rol in ("administrador", "recepcion"):
+        paciente = db.session.get(Paciente, id_paciente)
+        if not paciente or not paciente.estado:
+            return err("Paciente no encontrado.", 404)
+    else:
         return err("Acceso denegado.", 403)
 
-    return ok(paciente.to_dict())
+    return ok(_serializar_paciente(paciente, medico=es_medico))
 
 
 # ── PUT /api/pacientes/<id> ───────────────────────────────────────────────────
@@ -214,12 +299,12 @@ def editar_paciente(id_paciente: int):
         return err("Paciente no encontrado.", 404)
 
     body = request.get_json(silent=True)
-    if not body:
+    if not _es_json_objeto(body):
         return err("Se requiere un cuerpo JSON.", 400)
 
-    errores = _validar_campos_paciente(body, nuevo=False)
+    errores = _validar_campos_paciente(body)
     if errores:
-        return err(errores[0] if len(errores) == 1 else errores, 422)
+        return err("; ".join(errores), 422)
 
     # Actualizar solo campos presentes en el body
     campos = ["nombre", "ape_paterno", "ape_materno",
@@ -240,7 +325,7 @@ def editar_paciente(id_paciente: int):
         log.error("Error al editar paciente: %s", type(exc).__name__)
         return err("Error al actualizar el paciente.", 500)
 
-    return ok(paciente.to_dict())
+    return ok(_serializar_paciente(paciente))
 
 
 # ── GET /api/pacientes/<id>/historial ─────────────────────────────────────────
@@ -250,34 +335,37 @@ def editar_paciente(id_paciente: int):
 def historial_paciente(id_paciente: int):
     """
     Stub preparado para la Fase 7 (consultas y recetas).
-    Actualmente devuelve la lista de citas del paciente.
+    Mantiene el control de acceso sin exponer citas ni datos clínicos antes de Fase 7.
     El médico solo puede ver su propio historial de citas con ese paciente.
     """
-    paciente = db.session.get(Paciente, id_paciente)
-    if not paciente or not paciente.estado:
-        return err("Paciente no encontrado.", 404)
-
     usuario = g.usuario_actual
-    query = db.select(Cita).where(Cita.id_paciente == id_paciente)
-
     if usuario.rol == "medicos":
-        from ..models.medico import Medico
-        medico = db.session.execute(
-            db.select(Medico).where(Medico.id_usuario == usuario.id_usuario)
+        medico = _medico_del_usuario(usuario.id_usuario)
+        if medico is None or not medico.estado:
+            return err("Perfil médico no encontrado o inactivo.", 403)
+        paciente = db.session.execute(
+            db.select(Paciente)
+            .join(Cita, Cita.id_paciente == Paciente.id_paciente)
+            .where(
+                Paciente.id_paciente == id_paciente,
+                Paciente.estado.is_(True),
+                Cita.id_medico == medico.id_medico,
+            )
+            .limit(1)
         ).scalar_one_or_none()
-        if not medico:
-            return err("Perfil médico no encontrado.", 403)
-        # Filtrar solo citas de este médico
-        query = query.where(Cita.id_medico == medico.id_medico)
+        if paciente is None:
+            return err("No tienes autorización para ver este paciente.", 403)
     elif usuario.rol not in ("administrador", "recepcion"):
         return err("Acceso denegado.", 403)
-
-    citas = db.session.execute(
-        query.order_by(Cita.fecha.desc(), Cita.hora.desc())
-    ).scalars().all()
+    else:
+        paciente = db.session.get(Paciente, id_paciente)
+        if not paciente or not paciente.estado:
+            return err("Paciente no encontrado.", 404)
 
     return ok({
-        "paciente":   paciente.to_dict(),
-        "citas":      [c.to_dict() for c in citas],
-        "nota":       "Consultas y recetas disponibles en Fase 7.",
+        "paciente": _serializar_paciente(
+            paciente, medico=usuario.rol == "medicos"
+        ),
+        "citas": [],
+        "nota": "El historial clínico se implementará en Fase 7.",
     })

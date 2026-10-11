@@ -5,6 +5,7 @@ SQLite en memoria — no toca Supabase.
 """
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 from app.extensions import db
 from app.models.paciente import Paciente
 from app.models.cita import Cita
@@ -86,11 +87,11 @@ class TestListarPacientes:
         })
         assert resp.status_code == 200
 
-    def test_medico_no_puede_listar(self, client, token_medico):
+    def test_medico_sin_citas_obtiene_lista_vacia(self, client, token_medico):
         resp = client.get("/api/pacientes/", headers={
             "Authorization": f"Bearer {token_medico}"
         })
-        assert resp.status_code == 403
+        assert resp.status_code == 200
 
     def test_sin_token_rechazado(self, client):
         resp = client.get("/api/pacientes/")
@@ -109,6 +110,12 @@ class TestListarPacientes:
         }).get_json()["data"]
         assert data["paginacion"]["pagina"] == 2
         assert data["paginacion"]["por_pagina"] == 5
+
+    def test_paginacion_invalida_retorna_422(self, client, token_recepcion):
+        resp = client.get("/api/pacientes/?pagina=0", headers={
+            "Authorization": f"Bearer {token_recepcion}"
+        })
+        assert resp.status_code == 422
 
     def test_busqueda_por_nombre(self, client, token_recepcion, paciente_en_bd):
         data = client.get("/api/pacientes/?busqueda=Martínez", headers={
@@ -130,6 +137,33 @@ class TestListarPacientes:
         }).data.decode()
         assert "contrasena" not in raw
         assert "argon2" not in raw.lower()
+        data = client.get("/api/pacientes/", headers={
+            "Authorization": f"Bearer {token_recepcion}"
+        }).get_json()["data"]
+        assert all("fecha_registro" not in p and "estado" not in p
+                   for p in data["pacientes"])
+
+    def test_medico_solo_lista_pacientes_vinculados_y_datos_basicos(
+        self, client, token_medico, paciente_en_bd, cita_medico_paciente
+    ):
+        data = client.get("/api/pacientes/", headers={
+            "Authorization": f"Bearer {token_medico}"
+        }).get_json()["data"]
+        assert [p["id_paciente"] for p in data["pacientes"]] == [paciente_en_bd]
+        paciente = data["pacientes"][0]
+        assert "direccion" not in paciente
+        assert "fecha_registro" not in paciente
+        assert "estado" not in paciente
+
+    def test_medico_detalle_no_expone_direccion_ni_estado(
+        self, client, token_medico, paciente_en_bd, cita_medico_paciente
+    ):
+        data = client.get(f"/api/pacientes/{paciente_en_bd}", headers={
+            "Authorization": f"Bearer {token_medico}"
+        }).get_json()["data"]
+        assert "direccion" not in data
+        assert "estado" not in data
+        assert "fecha_registro" not in data
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -177,6 +211,20 @@ class TestCrearPaciente:
         })
         assert resp.status_code == 422
 
+    def test_tipo_invalido_se_rechaza_sin_error_interno(self, client, token_recepcion):
+        body = {**PACIENTE_VALIDO, "nombre": ["Juan"]}
+        resp = client.post("/api/pacientes/", json=body, headers={
+            "Authorization": f"Bearer {token_recepcion}"
+        })
+        assert resp.status_code == 422
+        assert resp.get_json()["error"]
+
+    def test_no_acepta_ids_arbitrarios_en_el_body(self, client, token_recepcion):
+        resp = client.post("/api/pacientes/", json={
+            **PACIENTE_VALIDO, "id_paciente": 123, "id_usuario": 456,
+        }, headers={"Authorization": f"Bearer {token_recepcion}"})
+        assert resp.status_code == 422
+
     def test_fecha_invalida(self, client, token_recepcion):
         body = {**PACIENTE_VALIDO, "fecha_nacimiento": "no-es-fecha"}
         resp = client.post("/api/pacientes/", json=body, headers={
@@ -216,6 +264,64 @@ class TestCrearPaciente:
 # GET /api/pacientes/<id> — Detalle
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def test_integrity_error_registra_metadatos_seguros_y_revierte(
+    app, client, token_recepcion, monkeypatch, caplog
+):
+    class DiagnosticoSimulado:
+        constraint_name = "pacientes_restriccion_test"
+        schema_name = "public"
+        table_name = "pacientes"
+        column_name = "id_paciente"
+
+    class ErrorDriverSimulado(Exception):
+        pgcode = "23505"
+        diag = DiagnosticoSimulado()
+
+    with app.app_context():
+        sesion = db.session()
+        rollback_real = sesion.rollback
+        rollback_observado = []
+
+        def rollback():
+            rollback_observado.append(True)
+            rollback_real()
+
+        def commit_fallido():
+            raise IntegrityError(
+                "INSERT con dato sensible",
+                {"nombre": "PACIENTE_PRIVADO"},
+                ErrorDriverSimulado(),
+            )
+
+        monkeypatch.setattr(sesion, "commit", commit_fallido)
+        monkeypatch.setattr(sesion, "rollback", rollback)
+
+        with caplog.at_level("ERROR", logger="app.blueprints.pacientes"):
+            resp = client.post(
+                "/api/pacientes/",
+                json=PACIENTE_VALIDO,
+                headers={"Authorization": f"******"},
+            )
+
+    assert resp.status_code == 500
+    assert rollback_observado == [True]
+    assert sesion.is_active
+    assert "23505" not in resp.get_data(as_text=True)
+    assert "PACIENTE_PRIVADO" not in caplog.text
+    assert "dato sensible" not in caplog.text
+
+    registro = next(
+        record for record in caplog.records
+        if record.name == "app.blueprints.pacientes"
+        and hasattr(record, "constraint_name")
+    )
+    assert registro.sqlstate == "23505"
+    assert registro.constraint_name == "pacientes_restriccion_test"
+    assert registro.schema_name == "public"
+    assert registro.table_name == "pacientes"
+    assert registro.column_name == "id_paciente"
+
+
 class TestObtenerPaciente:
 
     def test_recepcion_obtiene_paciente(self, client, token_recepcion, paciente_en_bd):
@@ -237,11 +343,20 @@ class TestObtenerPaciente:
             "Authorization": f"Bearer {token_medico}"
         })
         assert resp.status_code == 200
+        data = resp.get_json()["data"]
+        assert "direccion" not in data
+        assert "estado" not in data
 
     def test_medico_no_puede_ver_paciente_ajeno(self, client, token_medico,
                                                  paciente_en_bd):
         # Sin cita que vincule al médico con el paciente → denegado
         resp = client.get(f"/api/pacientes/{paciente_en_bd}", headers={
+            "Authorization": f"Bearer {token_medico}"
+        })
+        assert resp.status_code == 403
+
+    def test_medico_no_puede_distinguir_id_inexistente(self, client, token_medico):
+        resp = client.get("/api/pacientes/999999", headers={
             "Authorization": f"Bearer {token_medico}"
         })
         assert resp.status_code == 403

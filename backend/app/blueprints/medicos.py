@@ -18,6 +18,7 @@ Seguridad:
 
 import logging
 from flask import Blueprint, g
+from sqlalchemy.orm import joinedload
 
 from ..extensions import db
 from ..models.medico import Medico
@@ -33,6 +34,22 @@ log = logging.getLogger(__name__)
 medicos_bp = Blueprint("medicos", __name__)
 
 
+def _perfil_publico(medico: Medico) -> dict:
+    """Expone información profesional y el nombre de clínica, no IDs internos."""
+    return {
+        "id_medico": medico.id_medico,
+        "id_clinica": medico.id_clinica,
+        "nombre_clinica": medico.clinica.nombre,
+        "nombre": medico.nombre,
+        "ape_paterno": medico.ape_paterno,
+        "ape_materno": medico.ape_materno,
+        "especialidad": medico.especialidad,
+        "telefono": medico.telefono,
+        "correo": medico.correo,
+        "estado": medico.estado,
+    }
+
+
 # ── GET /api/medicos ──────────────────────────────────────────────────────────
 
 @medicos_bp.get("")
@@ -46,11 +63,12 @@ def listar_medicos():
     """
     medicos = db.session.execute(
         db.select(Medico)
+        .options(joinedload(Medico.clinica))
         .where(Medico.estado.is_(True))
         .order_by(Medico.ape_paterno, Medico.nombre)
     ).scalars().all()
 
-    return ok([m.to_dict() for m in medicos])
+    return ok([_perfil_publico(m) for m in medicos])
 
 
 # ── GET /api/medicos/yo ───────────────────────────────────────────────────────
@@ -64,7 +82,7 @@ def mi_perfil_medico():
     El id_medico se obtiene desde la BD, nunca del cliente.
     """
     medico: Medico = g.medico_actual
-    return ok(medico.to_dict())
+    return ok(_perfil_publico(medico))
 
 
 # ── GET /api/medicos/<id> ─────────────────────────────────────────────────────
@@ -77,7 +95,11 @@ def obtener_medico(id_medico: int):
     - Admin y recepción: cualquier médico.
     - Médico: solo su propio perfil (verificado contra BD, no contra el parámetro).
     """
-    medico = db.session.get(Medico, id_medico)
+    medico = db.session.execute(
+        db.select(Medico)
+        .options(joinedload(Medico.clinica))
+        .where(Medico.id_medico == id_medico)
+    ).scalar_one_or_none()
     if not medico or not medico.estado:
         return err("Médico no encontrado.", 404)
 
@@ -94,4 +116,4 @@ def obtener_medico(id_medico: int):
     elif usuario.rol not in ("administrador", "recepcion"):
         return err("Acceso denegado.", 403)
 
-    return ok(medico.to_dict())
+    return ok(_perfil_publico(medico))

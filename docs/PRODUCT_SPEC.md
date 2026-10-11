@@ -17,7 +17,8 @@ ClinicTec es una aplicación web multi-rol para la gestión de clínicas médica
 | Dar de alta usuarios (cualquier rol) | ✅ |
 | Desactivar y reactivar cuentas de usuario | ✅ |
 | Ver todas las clínicas y sus datos | ✅ |
-| Acceder a expedientes de pacientes | ❌ |
+| Consultar y administrar datos básicos de pacientes | ✅ |
+| Acceder al historial clínico | ❌ |
 | Registrar citas o consultas | ❌ |
 
 ### 2.2 Recepción
@@ -101,10 +102,12 @@ ClinicTec es una aplicación web multi-rol para la gestión de clínicas médica
 
 ### Pacientes
 
-1. El número de expediente es único dentro de una clínica.
-2. Un paciente puede existir en varias clínicas (registros independientes).
-3. Solo recepción puede registrar o editar datos básicos del paciente.
-4. El historial clínico es de solo lectura para recepción.
+1. `id_paciente` es la clave primaria; el esquema real no tiene una columna `numero_expediente`.
+2. El paciente no se relaciona directamente con una clínica; la clínica se obtiene desde sus citas.
+3. Administración y recepción pueden consultar y gestionar datos básicos del paciente.
+4. El médico solo puede consultar pacientes vinculados a sus propias citas y recibe los datos mínimos para su atención.
+5. No se permite el borrado físico predeterminado de pacientes.
+6. La consulta del historial clínico se implementará en la Fase 7.
 
 ### Usuarios
 

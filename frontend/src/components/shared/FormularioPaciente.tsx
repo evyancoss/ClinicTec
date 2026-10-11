@@ -37,8 +37,29 @@ export function FormularioPaciente({
     if (!form.ape_materno.trim())  e.ape_materno  = "Apellido materno es requerido.";
     if (!form.fecha_nacimiento)    e.fecha_nacimiento = "Fecha de nacimiento es requerida.";
     if (!form.sexo)                e.sexo         = "Sexo es requerido.";
+    if (form.nombre.trim().length > 100) e.nombre = "Máximo 100 caracteres.";
+    if (form.ape_paterno.trim().length > 100) e.ape_paterno = "Máximo 100 caracteres.";
+    if (form.ape_materno.trim().length > 100) e.ape_materno = "Máximo 100 caracteres.";
+    if (form.direccion && form.direccion.length > 255) {
+      e.direccion = "Máximo 255 caracteres.";
+    }
+    if (form.telefono && !/^[\d\s().+-]+$/.test(form.telefono)) {
+      e.telefono = "Teléfono inválido.";
+    } else if (form.telefono && form.telefono.length > 20) {
+      e.telefono = "Máximo 20 caracteres.";
+    } else if (form.telefono && form.telefono.replace(/\D/g, "").length > 15) {
+      e.telefono = "Máximo 15 dígitos.";
+    } else if (form.telefono && form.telefono.replace(/\D/g, "").length < 7) {
+      e.telefono = "Se requieren al menos 7 dígitos.";
+    }
     if (form.correo && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(form.correo)) {
       e.correo = "Correo inválido.";
+    }
+    if (form.correo && form.correo.length > 100) e.correo = "Máximo 100 caracteres.";
+    const hoy = new Date();
+    const hoyISO = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-${String(hoy.getDate()).padStart(2, "0")}`;
+    if (form.fecha_nacimiento && form.fecha_nacimiento >= hoyISO) {
+      e.fecha_nacimiento = "La fecha debe ser anterior a hoy.";
     }
     setErrores(e);
     return Object.keys(e).length === 0;

@@ -2,7 +2,7 @@ import { Menu, LogOut, ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Rol, UsuarioDemo } from "../../types";
-import { useDemo } from "../../store/DemoContext";
+import { useDemo } from "../../store/demo-context";
 
 interface HeaderProps {
   titulo: string;

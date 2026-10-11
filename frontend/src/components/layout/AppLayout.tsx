@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
-import { useDemo } from "../../store/DemoContext";
+import { useDemo } from "../../store/demo-context";
 import { SelectorRolDemo } from "../shared/SelectorRolDemo";
 import type { Rol } from "../../types";
 

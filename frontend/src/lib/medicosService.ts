@@ -7,13 +7,12 @@ import { api } from "./api";
 
 export interface MedicoAPI {
   id_medico:          number;
-  id_usuario:         number | null;
   id_clinica:         number;
+  nombre_clinica:     string;
   nombre:             string;
   ape_paterno:        string;
   ape_materno:        string;
   especialidad:       string;
-  cedula_profesional: string;
   telefono:           string | null;
   correo:             string | null;
   estado:             boolean;

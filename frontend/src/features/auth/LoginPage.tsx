@@ -3,7 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff, Stethoscope, AlertCircle } from "lucide-react";
 import { Input } from "../../components/ui/Input";
 import { Button } from "../../components/ui/Button";
-import { useDemo } from "../../store/DemoContext";
+import { useDemo } from "../../store/demo-context";
+import { authService } from "../../lib/authService";
+import { setAccessToken } from "../../lib/api";
 
 export function LoginPage() {
   const [email, setEmail] = useState("");
@@ -13,7 +15,7 @@ export function LoginPage() {
   const [errorPassword, setErrorPassword] = useState("");
   const [cargando, setCargando] = useState(false);
 
-  const { setAutenticado } = useDemo();
+  const { setAutenticado, setRolActivo } = useDemo();
   const navigate = useNavigate();
 
   // ─── Validación del formulario ────────────────────────────────────────────
@@ -23,10 +25,7 @@ export function LoginPage() {
     setErrorPassword("");
 
     if (!email.trim()) {
-      setErrorEmail("El correo electrónico es obligatorio.");
-      valido = false;
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setErrorEmail("Ingresa un correo electrónico válido.");
+      setErrorEmail("El usuario es obligatorio.");
       valido = false;
     }
 
@@ -41,20 +40,29 @@ export function LoginPage() {
     return valido;
   }
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!validar()) return;
 
     setCargando(true);
-    // Simula latencia de red (demostración)
-    setTimeout(() => {
-      setCargando(false);
-      setAutenticado(true);
-      navigate("/recepcion/agenda");
-    }, 1000);
+    const respuesta = await authService.iniciarSesion(email.trim(), password);
+    setCargando(false);
+    if (respuesta.error || !respuesta.data) {
+      setErrorPassword(respuesta.error ?? "No fue posible iniciar sesión.");
+      return;
+    }
+    setAccessToken(respuesta.data.access_token);
+    const rol = respuesta.data.perfil.rol === "medicos"
+      ? "medico"
+      : respuesta.data.perfil.rol;
+    setRolActivo(rol);
+    setAutenticado(true);
+    navigate(rol === "medico" ? "/medico/pacientes" : "/recepcion/pacientes");
   }
 
   function entrarComoDemo() {
+    setAccessToken(null);
+    setRolActivo("recepcion");
     setAutenticado(true);
     navigate("/recepcion/agenda");
   }
@@ -73,16 +81,16 @@ export function LoginPage() {
           </p>
         </div>
 
-        {/* Banner de demostración */}
+        {/* Acceso a la API */}
         <div className="mb-6 flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-xl p-4">
           <AlertCircle size={16} className="text-amber-600 mt-0.5 flex-shrink-0" aria-hidden="true" />
           <div>
             <p className="text-xs font-semibold text-amber-800">
-              Modo demostración
+              Acceso seguro
             </p>
             <p className="text-xs text-amber-700 mt-0.5">
-              Esta interfaz es visual únicamente. No existe autenticación real,
-              y ningún dato se guarda ni se envía a ningún servidor.
+              Inicia sesión con tu usuario de ClinicTec. El acceso y los permisos
+              se validan en la API.
             </p>
           </div>
         </div>
@@ -96,13 +104,13 @@ export function LoginPage() {
           <form onSubmit={handleSubmit} noValidate aria-label="Formulario de inicio de sesión">
             <div className="space-y-4">
               <Input
-                label="Correo electrónico"
-                type="email"
-                placeholder="correo@ejemplo.com"
+                label="Usuario"
+                type="text"
+                placeholder="usuario"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 error={errorEmail}
-                autoComplete="email"
+                autoComplete="username"
                 autoFocus
               />
 
@@ -159,7 +167,7 @@ export function LoginPage() {
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-6">
-          ClinicTec — Versión demo visual · Fase 2
+          ClinicTec · Autenticación JWT · Fase 5
         </p>
       </div>
     </div>

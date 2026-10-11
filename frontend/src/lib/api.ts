@@ -7,7 +7,7 @@
  * - Los errores devuelven el mensaje del campo `error` de la respuesta.
  */
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:5000";
+const BASE_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:5000";
 
 export interface ApiResponse<T = unknown> {
   data: T | null;
@@ -39,26 +39,30 @@ async function request<T>(
     headers["Authorization"] = `Bearer ${_accessToken}`;
   }
 
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method,
-    headers,
-    credentials: "include", // necesario para la cookie de refresh
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-
-  // Algunos errores de red no tienen body JSON
-  let json: ApiResponse<T>;
   try {
-    json = await res.json();
+    const res = await fetch(`${BASE_URL}${path}`, {
+      method,
+      headers,
+      credentials: "include", // necesario para la cookie de refresh
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+
+    try {
+      return await res.json() as ApiResponse<T>;
+    } catch {
+      return {
+        data: null,
+        error: `Respuesta inválida del servidor (${res.status}).`,
+        status: res.status,
+      };
+    }
   } catch {
-    json = {
+    return {
       data: null,
-      error: `Error de red (${res.status})`,
-      status: res.status,
+      error: "No se pudo conectar con el servidor. Intenta de nuevo.",
+      status: 0,
     };
   }
-
-  return json;
 }
 
 export const api = {

@@ -53,9 +53,10 @@ DATABASE_URL=postgresql+psycopg2://<usuario>:<contraseña>@<host>:<puerto>/<base
 
 | Fase | Descripción | Estado |
 |---|---|---|
-| 1 | Documentación e inspección | ✅ En progreso |
-| 2 | Conexión a BD y modelos SQLAlchemy | ⏳ Pendiente |
-| 3 | Autenticación y control de roles | ⏳ Pendiente |
-| 4 | Módulo Recepción | ⏳ Pendiente |
-| 5 | Módulo Médico | ⏳ Pendiente |
+| 1 | Documentación e inspección | ✅ Completada |
+| 2 | Conexión a BD y modelos SQLAlchemy | ✅ Completada |
+| 3 | Autenticación y control de roles | ✅ Completada |
+| 4 | Módulo Recepción | ✅ Completada |
+| 5 | Módulos funcionales de pacientes y médicos | ✅ Completada |
 | 6 | Módulo Administrador | ⏳ Pendiente |
+| 7 | Consultas, recetas e historial clínico | ⏳ Pendiente |

@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { Search, FileText, ClipboardList, AlertCircle } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Search, FileText, ClipboardList, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { Card, CardHeader } from "../../components/ui/Card";
@@ -8,6 +8,7 @@ import { EstadoVacio } from "../../components/ui/EstadoVacio";
 import {
   pacientesService,
   type PacienteAPI,
+  type PaginacionAPI,
 } from "../../lib/pacientesService";
 
 // La vista del médico lista sus pacientes a través del historial de citas.
@@ -15,7 +16,8 @@ import {
 
 function calcularEdad(fechaNac: string): number {
   const hoy = new Date();
-  const nac = new Date(fechaNac);
+  const [anio, mes, dia] = fechaNac.split("-").map(Number);
+  const nac = new Date(anio, mes - 1, dia);
   let edad = hoy.getFullYear() - nac.getFullYear();
   const m = hoy.getMonth() - nac.getMonth();
   if (m < 0 || (m === 0 && hoy.getDate() < nac.getDate())) edad--;
@@ -28,6 +30,8 @@ function iniciales(p: PacienteAPI): string {
 
 export function MisPacientesPage() {
   const [pacientes, setPacientes]         = useState<PacienteAPI[]>([]);
+  const [paginacion, setPaginacion]       = useState<PaginacionAPI | null>(null);
+  const [pagina, setPagina]               = useState(1);
   const [cargando, setCargando]           = useState(false);
   const [errorApi, setErrorApi]           = useState<string | null>(null);
   const [busqueda, setBusqueda]           = useState("");
@@ -40,23 +44,39 @@ export function MisPacientesPage() {
     setTimeout(() => setToast(null), 3500);
   }
 
-  const cargar = useCallback(async () => {
-    setCargando(true);
-    setErrorApi(null);
-    // El médico usa el mismo endpoint; el backend filtra por su token
-    const resp = await pacientesService.listar(1, 100, busqueda);
-    setCargando(false);
-    if (resp.error || !resp.data) {
-      setErrorApi(resp.error ?? "Error al cargar pacientes.");
-      return;
-    }
-    setPacientes(resp.data.pacientes);
-  }, [busqueda]);
+  useEffect(() => {
+    let vigente = true;
 
-  useEffect(() => { cargar(); }, [cargar]);
+    async function cargar() {
+      await Promise.resolve();
+      if (!vigente) return;
+
+      setCargando(true);
+      setErrorApi(null);
+      // El médico usa el mismo endpoint; el backend filtra por su token
+      const resp = await pacientesService.listar(pagina, 20, busqueda);
+      if (!vigente) return;
+
+      setCargando(false);
+      if (resp.error || !resp.data) {
+        setPacientes([]);
+        setPaginacion(null);
+        setErrorApi(resp.error ?? "Error al cargar pacientes.");
+        return;
+      }
+      setPacientes(resp.data.pacientes);
+      setPaginacion(resp.data.paginacion);
+    }
+
+    void cargar();
+    return () => {
+      vigente = false;
+    };
+  }, [pagina, busqueda]);
 
   function handleBuscar() {
     setBusqueda(busquedaInput.trim());
+    setPagina(1);
   }
 
   return (
@@ -64,7 +84,9 @@ export function MisPacientesPage() {
       <div>
         <h1 className="text-2xl font-bold text-brand-800">Mis pacientes</h1>
         <p className="text-sm text-gray-500 mt-0.5">
-          {cargando ? "Cargando…" : `${pacientes.length} paciente${pacientes.length !== 1 ? "s" : ""} asignado${pacientes.length !== 1 ? "s" : ""}`}
+          {cargando
+            ? "Cargando…"
+            : `${paginacion?.total ?? pacientes.length} paciente${(paginacion?.total ?? pacientes.length) !== 1 ? "s" : ""} asignado${(paginacion?.total ?? pacientes.length) !== 1 ? "s" : ""}`}
         </p>
       </div>
 
@@ -82,7 +104,7 @@ export function MisPacientesPage() {
           />
           <Button variante="secondary" onClick={handleBuscar}>Buscar</Button>
           {busqueda && (
-            <Button variante="ghost" onClick={() => { setBusqueda(""); setBusquedaInput(""); }}>
+            <Button variante="ghost" onClick={() => { setBusqueda(""); setBusquedaInput(""); setPagina(1); }}>
               Limpiar
             </Button>
           )}
@@ -96,7 +118,7 @@ export function MisPacientesPage() {
         </div>
       )}
 
-      {cargando ? (
+      {!errorApi && (cargando ? (
         <div className="py-16 text-center text-sm text-gray-400">Cargando pacientes…</div>
       ) : pacientes.length === 0 ? (
         <EstadoVacio
@@ -181,8 +203,34 @@ export function MisPacientesPage() {
               )}
             </div>
           ))}
+
+          {paginacion && paginacion.paginas > 1 && (
+            <div className="flex items-center justify-between px-5 py-3 border border-brand-200 rounded-xl bg-white">
+              <span className="text-xs text-gray-500">
+                Página {paginacion.pagina} de {paginacion.paginas}
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  variante="secondary" tamaño="sm"
+                  icono={<ChevronLeft size={14} />}
+                  onClick={() => setPagina((actual) => Math.max(1, actual - 1))}
+                  disabled={pagina <= 1}
+                >
+                  Anterior
+                </Button>
+                <Button
+                  variante="secondary" tamaño="sm"
+                  iconoDerecho={<ChevronRight size={14} />}
+                  onClick={() => setPagina((actual) => actual + 1)}
+                  disabled={pagina >= paginacion.paginas}
+                >
+                  Siguiente
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
-      )}
+      ))}
 
       {toast && (
         <div className="fixed bottom-6 right-6 z-50 max-w-sm">

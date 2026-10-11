@@ -14,9 +14,9 @@ export interface PacienteAPI {
   sexo:             string;
   telefono:         string | null;
   correo:           string | null;
-  direccion:        string | null;
-  fecha_registro:   string | null;
-  estado:           boolean;
+  direccion?:       string | null;
+  fecha_registro?:  string | null;
+  estado?:          boolean | null;
 }
 
 export interface PaginacionAPI {
