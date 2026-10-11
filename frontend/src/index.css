@@ -1,0 +1,41 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
+  }
+
+  body {
+    @apply bg-brand-50 text-gray-800;
+  }
+
+  * {
+    @apply box-border;
+  }
+}
+
+@layer utilities {
+  /* Scrollbar personalizado */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-brand-50;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-brand-200 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-brand-500;
+  }
+
+  /* Focus ring accesible */
+  .focus-brand:focus-visible {
+    @apply outline-none ring-2 ring-brand-500 ring-offset-2;
+  }
+}
