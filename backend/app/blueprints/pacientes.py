@@ -214,7 +214,6 @@ def crear_paciente():
         return err("Se requiere un cuerpo JSON.", 400)
 
     errores = _validar_campos_paciente(body)
-    print(errores)
     if errores:
         return err("; ".join(errores), 422)
 
@@ -223,17 +222,14 @@ def crear_paciente():
         ape_paterno=body["ape_paterno"].strip(),
         ape_materno=body["ape_materno"].strip(),
         fecha_nacimiento=_date.fromisoformat(body["fecha_nacimiento"]),
-        sexo="M", #body["sexo"]
+        sexo=body["sexo"],
         telefono=(body.get("telefono") or "").strip() or None,
         correo=(body.get("correo") or "").strip() or None,
         direccion=(body.get("direccion") or "").strip() or None,
         estado=True,
     )
 
-    db.session.add(paciente)
-    db.session.commit()
-
-    '''try:
+    try:
         db.session.add(paciente)
         db.session.commit()
     except IntegrityError as exc:
@@ -243,7 +239,7 @@ def crear_paciente():
     except Exception as exc:
         db.session.rollback()
         log.error("Error al crear paciente: %s", type(exc).__name__)
-        return err("Error al guardar el paciente. Intenta de nuevo.", 500)'''
+        return err("Error al guardar el paciente. Intenta de nuevo.", 500)
 
     return ok(_serializar_paciente(paciente), 201)
 

@@ -57,7 +57,7 @@ def validar_fecha_nacimiento(valor: str | None) -> str | None:
 
 # ── Sexo ───────────────────────────────────────────────────────────────────────
 
-SEXOS_VALIDOS = {"Masculino", "Femenino", "Otro"}
+SEXOS_VALIDOS = {"M", "F", "O"}
 
 def validar_sexo(valor: str | None) -> str | None:
     if valor is None or valor == "":

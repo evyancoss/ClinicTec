@@ -93,9 +93,9 @@ export function FormularioPaciente({
           onChange={(e) => actualizar("sexo", e.target.value)}
           error={errores.sexo}>
           <option value="">Selecciona…</option>
-          <option value="Masculino">Masculino</option>
-          <option value="Femenino">Femenino</option>
-          <option value="Otro">Otro</option>
+          <option value="M">Masculino</option>
+          <option value="F">Femenino</option>
+          <option value="O">Otro</option>
         </Select>
       </div>
 

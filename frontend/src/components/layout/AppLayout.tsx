@@ -26,7 +26,13 @@ const rutaInicio: Record<Rol, string> = {
 
 export function AppLayout() {
   const [sidebarAbierto, setSidebarAbierto] = useState(false);
-  const { rolActivo, setRolActivo, usuarioActivo } = useDemo();
+  const {
+    rolActivo,
+    setRolActivo,
+    usuarioActivo,
+    usuarioAutenticado,
+    modoDemo,
+  } = useDemo();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -34,6 +40,7 @@ export function AppLayout() {
 
   // Al cambiar rol, redirige al inicio del módulo correspondiente
   function cambiarRol(nuevoRol: Rol) {
+    if (!modoDemo) return;
     setRolActivo(nuevoRol);
     navigate(rutaInicio[nuevoRol]);
   }
@@ -51,17 +58,19 @@ export function AppLayout() {
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <Header
           titulo={titulo}
-          usuario={usuarioActivo}
+          usuario={modoDemo || !usuarioAutenticado ? usuarioActivo : usuarioAutenticado}
+          modoDemo={modoDemo}
           onAbrirMenu={() => setSidebarAbierto(true)}
         />
 
-        {/* Banner de demostración + selector de rol */}
-        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs text-amber-700 font-medium">
-            ⚠️ Modo demostración — Ninguna acción modifica datos reales
-          </p>
-          <SelectorRolDemo rolActivo={rolActivo} onChange={cambiarRol} />
-        </div>
+        {modoDemo && (
+          <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-amber-700 font-medium">
+              ⚠️ Modo demostración — Ninguna acción modifica datos reales
+            </p>
+            <SelectorRolDemo rolActivo={rolActivo} onChange={cambiarRol} />
+          </div>
+        )}
 
         {/* Área de contenido */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6">

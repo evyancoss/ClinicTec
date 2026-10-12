@@ -5,6 +5,8 @@ import { DemoContext, USUARIOS_DEMO } from "./demo-context";
 export function DemoProvider({ children }: { children: ReactNode }) {
   const [rolActivo, setRolActivo] = useState<Rol>("recepcion");
   const [autenticado, setAutenticado] = useState(false);
+  const [modoDemo, setModoDemo] = useState(false);
+  const [usuarioAutenticado, setUsuarioAutenticado] = useState<import("../types").PerfilAutenticado | null>(null);
 
   return (
     <DemoContext.Provider
@@ -13,6 +15,10 @@ export function DemoProvider({ children }: { children: ReactNode }) {
         setRolActivo,
         autenticado,
         setAutenticado,
+        modoDemo,
+        setModoDemo,
+        usuarioAutenticado,
+        setUsuarioAutenticado,
         usuarioActivo: USUARIOS_DEMO[rolActivo],
       }}
     >

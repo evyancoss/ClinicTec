@@ -10,6 +10,16 @@ export interface UsuarioDemo {
   avatar: string;
 }
 
+export interface PerfilAutenticado {
+  id_usuario: number;
+  nombre: string;
+  ape_paterno: string;
+  ape_materno: string;
+  rol: "administrador" | "recepcion" | "medicos";
+  id_medico?: number;
+  id_clinica?: number;
+}
+
 // ─── Citas ────────────────────────────────────────────────────────────────────
 export type EstadoCita = "programada" | "atendida" | "cancelada" | "reagendada";
 
@@ -59,5 +69,9 @@ export interface DemoContextType {
   setRolActivo: (rol: Rol) => void;
   autenticado: boolean;
   setAutenticado: (v: boolean) => void;
+  modoDemo: boolean;
+  setModoDemo: (v: boolean) => void;
+  usuarioAutenticado: PerfilAutenticado | null;
+  setUsuarioAutenticado: (perfil: PerfilAutenticado | null) => void;
   usuarioActivo: UsuarioDemo;
 }

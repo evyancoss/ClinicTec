@@ -1,12 +1,15 @@
 import { Menu, LogOut, ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { Rol, UsuarioDemo } from "../../types";
+import type { PerfilAutenticado, Rol, UsuarioDemo } from "../../types";
 import { useDemo } from "../../store/demo-context";
+import { authService } from "../../lib/authService";
+import { setAccessToken } from "../../lib/api";
 
 interface HeaderProps {
   titulo: string;
-  usuario: UsuarioDemo;
+  usuario: UsuarioDemo | PerfilAutenticado;
+  modoDemo: boolean;
   onAbrirMenu: () => void;
 }
 
@@ -16,13 +19,28 @@ const etiquetasRol: Record<Rol, string> = {
   medico:        "Médico",
 };
 
-export function Header({ titulo, usuario, onAbrirMenu }: HeaderProps) {
+export function Header({ titulo, usuario, modoDemo, onAbrirMenu }: HeaderProps) {
   const [menuAbierto, setMenuAbierto] = useState(false);
-  const { setAutenticado } = useDemo();
+  const { setAutenticado, setModoDemo, setUsuarioAutenticado } = useDemo();
   const navigate = useNavigate();
 
-  function cerrarSesion() {
+  const esDemo = "avatar" in usuario;
+  const nombreUsuario = esDemo
+    ? usuario.nombre
+    : `${usuario.nombre} ${usuario.ape_paterno} ${usuario.ape_materno}`;
+  const rolUsuario = esDemo
+    ? usuario.rol
+    : usuario.rol === "medicos" ? "medico" : usuario.rol;
+  const avatar = esDemo
+    ? usuario.avatar
+    : `${usuario.nombre[0] ?? ""}${usuario.ape_paterno[0] ?? ""}`.toUpperCase();
+
+  async function cerrarSesion() {
     setMenuAbierto(false);
+    if (!modoDemo) await authService.cerrarSesion();
+    setAccessToken(null);
+    setUsuarioAutenticado(null);
+    setModoDemo(false);
     setAutenticado(false);
     navigate("/login");
   }
@@ -51,14 +69,14 @@ export function Header({ titulo, usuario, onAbrirMenu }: HeaderProps) {
         >
           {/* Avatar */}
           <div className="w-8 h-8 rounded-full bg-brand-500 text-white flex items-center justify-center text-xs font-bold select-none">
-            {usuario.avatar}
+            {avatar}
           </div>
           <div className="hidden sm:flex flex-col text-left">
             <span className="text-sm font-medium text-brand-800 leading-tight">
-              {usuario.nombre}
+              {nombreUsuario}
             </span>
             <span className="text-xs text-gray-500 leading-tight">
-              {etiquetasRol[usuario.rol]}
+              {etiquetasRol[rolUsuario]}
             </span>
           </div>
           <ChevronDown size={14} className="text-gray-400" aria-hidden="true" />
@@ -74,10 +92,10 @@ export function Header({ titulo, usuario, onAbrirMenu }: HeaderProps) {
             />
             <div className="absolute right-0 mt-2 w-52 bg-white border border-brand-200 rounded-xl shadow-lg z-20 overflow-hidden">
               <div className="px-4 py-3 border-b border-brand-100">
-                <p className="text-sm font-medium text-brand-800">{usuario.nombre}</p>
-                <p className="text-xs text-gray-500">{usuario.clinica}</p>
+                <p className="text-sm font-medium text-brand-800">{nombreUsuario}</p>
+                {esDemo && <p className="text-xs text-gray-500">{usuario.clinica}</p>}
                 <span className="inline-block mt-1 text-xs bg-brand-100 text-brand-800 px-2 py-0.5 rounded-full">
-                  {etiquetasRol[usuario.rol]} — DEMO
+                  {etiquetasRol[rolUsuario]}{modoDemo ? " — DEMO" : ""}
                 </span>
               </div>
               <button
@@ -85,7 +103,7 @@ export function Header({ titulo, usuario, onAbrirMenu }: HeaderProps) {
                 className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
               >
                 <LogOut size={15} aria-hidden="true" />
-                Cerrar sesión (Demo)
+                Cerrar sesión{modoDemo ? " (Demo)" : ""}
               </button>
             </div>
           </>

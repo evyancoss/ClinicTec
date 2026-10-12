@@ -15,7 +15,12 @@ export function LoginPage() {
   const [errorPassword, setErrorPassword] = useState("");
   const [cargando, setCargando] = useState(false);
 
-  const { setAutenticado, setRolActivo } = useDemo();
+  const {
+    setAutenticado,
+    setRolActivo,
+    setModoDemo,
+    setUsuarioAutenticado,
+  } = useDemo();
   const navigate = useNavigate();
 
   // ─── Validación del formulario ────────────────────────────────────────────
@@ -52,6 +57,8 @@ export function LoginPage() {
       return;
     }
     setAccessToken(respuesta.data.access_token);
+    setUsuarioAutenticado(respuesta.data.perfil);
+    setModoDemo(false);
     const rol = respuesta.data.perfil.rol === "medicos"
       ? "medico"
       : respuesta.data.perfil.rol;
@@ -62,6 +69,8 @@ export function LoginPage() {
 
   function entrarComoDemo() {
     setAccessToken(null);
+    setUsuarioAutenticado(null);
+    setModoDemo(true);
     setRolActivo("recepcion");
     setAutenticado(true);
     navigate("/recepcion/agenda");

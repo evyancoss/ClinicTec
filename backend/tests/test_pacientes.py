@@ -19,13 +19,11 @@ PACIENTE_VALIDO = {
     "ape_paterno": "García",
     "ape_materno": "López",
     "fecha_nacimiento": "1990-05-15",
-    "sexo": "Masculino",
+    "sexo": "M",
     "telefono": "5551234567",
     "correo": "juan@ejemplo.com",
     "direccion": "Calle Falsa 123",
 }
-
-
 @pytest.fixture()
 def paciente_en_bd(app):
     """Paciente real en SQLite para pruebas de lectura/edición."""
@@ -33,7 +31,7 @@ def paciente_en_bd(app):
         from datetime import date as _date
         p = Paciente(
             nombre="Ana", ape_paterno="Martínez", ape_materno="Ruiz",
-            fecha_nacimiento=_date(1985, 3, 10), sexo="Femenino",
+            fecha_nacimiento=_date(1985, 3, 10), sexo="F",
             telefono="5559876543", estado=True,
         )
         db.session.add(p)
@@ -239,6 +237,15 @@ class TestCrearPaciente:
         })
         assert resp.status_code == 422
 
+    @pytest.mark.parametrize("sexo", ["M", "F", "O"])
+    def test_acepta_codigos_de_sexo_supabase(self, client, token_recepcion, sexo):
+        body = {**PACIENTE_VALIDO, "sexo": sexo}
+        resp = client.post("/api/pacientes/", json=body, headers={
+            "Authorization": f"Bearer {token_recepcion}"
+        })
+        assert resp.status_code == 201
+        assert resp.get_json()["data"]["sexo"] == sexo
+
     def test_correo_invalido(self, client, token_recepcion):
         body = {**PACIENTE_VALIDO, "correo": "no-es-correo"}
         resp = client.post("/api/pacientes/", json=body, headers={
@@ -300,7 +307,7 @@ def test_integrity_error_registra_metadatos_seguros_y_revierte(
             resp = client.post(
                 "/api/pacientes/",
                 json=PACIENTE_VALIDO,
-                headers={"Authorization": f"******"},
+                headers={"Authorization": f"Bearer {token_recepcion}"},
             )
 
     assert resp.status_code == 500
@@ -389,11 +396,12 @@ class TestEditarPaciente:
     def test_recepcion_edita_paciente(self, client, token_recepcion, paciente_en_bd):
         resp = client.put(f"/api/pacientes/{paciente_en_bd}", json={
             "nombre": "Ana", "ape_paterno": "Martínez", "ape_materno": "Ruiz",
-            "fecha_nacimiento": "1985-03-10", "sexo": "Femenino",
+            "fecha_nacimiento": "1985-03-10", "sexo": "F",
             "telefono": "5550000001",
         }, headers={"Authorization": f"Bearer {token_recepcion}"})
         assert resp.status_code == 200
         assert resp.get_json()["data"]["telefono"] == "5550000001"
+        assert resp.get_json()["data"]["sexo"] == "F"
 
     def test_medico_no_puede_editar(self, client, token_medico, paciente_en_bd):
         resp = client.put(f"/api/pacientes/{paciente_en_bd}", json=PACIENTE_VALIDO,
