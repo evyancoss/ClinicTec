@@ -171,7 +171,7 @@ export function LoginPage() {
             className="w-full"
             onClick={entrarComoDemo}
           >
-            Ver demostración sin credenciales
+            Registrarse
           </Button>
         </div>
 

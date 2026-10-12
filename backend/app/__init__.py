@@ -32,10 +32,12 @@ def create_app(config_class=Config):
     from .blueprints.auth      import auth_bp
     from .blueprints.pacientes import pacientes_bp
     from .blueprints.medicos   import medicos_bp
+    from .blueprints.usuarios  import usuarios_bp
     app.register_blueprint(health_bp,    url_prefix="/api/health")
     app.register_blueprint(auth_bp,      url_prefix="/api/auth")
     app.register_blueprint(pacientes_bp, url_prefix="/api/pacientes")
     app.register_blueprint(medicos_bp,   url_prefix="/api/medicos")
+    app.register_blueprint(usuarios_bp,  url_prefix="/api/usuarios")
 
     # ── Registrar comandos CLI ────────────────────────────────────────────────
     from .commands import register_commands

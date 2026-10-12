@@ -1,47 +1,162 @@
-import { useState } from "react";
-import { UserPlus, ToggleLeft, ToggleRight, Edit } from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
+import { UserPlus } from "lucide-react";
+import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Card, CardHeader } from "../../components/ui/Card";
-import { Badge } from "../../components/ui/Badge";
-import { ToastDemo } from "../../components/ui/ToastDemo";
+import { Modal } from "../../components/ui/Modal";
+import {
+  usuariosService,
+  type AltaUsuario,
+  type ClinicaOpcion,
+  type RolCuenta,
+  type UsuarioSistema,
+} from "../../lib/usuariosService";
 
-type RolUsuario = "administrador" | "recepcion" | "medico";
-
-interface UsuarioAdmin {
-  id: number;
+interface BorradorUsuario {
   nombre: string;
+  ape_paterno: string;
+  ape_materno: string;
+  usuario: string;
+  contrasena: string;
+  rol: RolCuenta;
+  id_clinica: string;
+  especialidad: string;
+  cedula_profesional: string;
+  telefono: string;
   correo: string;
-  rol: RolUsuario;
-  clinica: string;
-  activo: boolean;
 }
 
-const USUARIOS_DEMO: UsuarioAdmin[] = [
-  { id: 1, nombre: "Ana García",     correo: "ana@clinictec.demo",    rol: "administrador", clinica: "ClinicTec Central", activo: true },
-  { id: 2, nombre: "Carlos Méndez",  correo: "carlos@clinictec.demo", rol: "recepcion",     clinica: "ClinicTec Norte",   activo: true },
-  { id: 3, nombre: "Dra. Laura Vega",correo: "laura@clinictec.demo",  rol: "medico",        clinica: "ClinicTec Norte",   activo: true },
-  { id: 4, nombre: "Dr. Marcos Torres",correo:"marcos@clinictec.demo",rol: "medico",        clinica: "ClinicTec Central", activo: true },
-  { id: 5, nombre: "Beatriz Soto",   correo: "beatriz@clinictec.demo",rol: "recepcion",     clinica: "ClinicTec Sur",     activo: false },
-];
+const BORRADOR_VACIO: BorradorUsuario = {
+  nombre: "",
+  ape_paterno: "",
+  ape_materno: "",
+  usuario: "",
+  contrasena: "",
+  rol: "recepcion",
+  id_clinica: "",
+  especialidad: "",
+  cedula_profesional: "",
+  telefono: "",
+  correo: "",
+};
 
-const etiquetasRol: Record<RolUsuario, string> = {
+const ETIQUETAS_ROL: Record<RolCuenta, string> = {
   administrador: "Administrador",
-  recepcion:     "Recepción",
-  medico:        "Médico",
+  recepcion: "Recepción",
+  medicos: "Médico",
 };
 
-const variantesRol: Record<RolUsuario, "default" | "info" | "success"> = {
+const VARIANTES_ROL: Record<RolCuenta, "default" | "info" | "success"> = {
   administrador: "default",
-  recepcion:     "info",
-  medico:        "success",
+  recepcion: "info",
+  medicos: "success",
 };
+
+const CAMPO =
+  "w-full rounded-md border border-brand-200 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500";
 
 export function UsuariosPage() {
-  const [toast, setToast] = useState<string | null>(null);
+  const [usuarios, setUsuarios] = useState<UsuarioSistema[]>([]);
+  const [clinicas, setClinicas] = useState<ClinicaOpcion[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
+  const [modalAbierto, setModalAbierto] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [errorFormulario, setErrorFormulario] = useState<string | null>(null);
+  const [confirmacion, setConfirmacion] = useState<string | null>(null);
+  const [borrador, setBorrador] = useState(BORRADOR_VACIO);
+  const [recarga, setRecarga] = useState(0);
 
-  function mostrarToast(msg: string) {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3500);
+  useEffect(() => {
+    let vigente = true;
+    Promise.all([
+      usuariosService.listar(),
+      usuariosService.listarClinicas(),
+    ])
+      .then(([listaUsuarios, listaClinicas]) => {
+        if (!vigente) return;
+        setUsuarios(listaUsuarios);
+        setClinicas(listaClinicas);
+        setErrorCarga(null);
+      })
+      .catch((error: unknown) => {
+        if (!vigente) return;
+        setErrorCarga(
+          error instanceof Error
+            ? error.message
+            : "No se pudieron cargar los usuarios.",
+        );
+      })
+      .finally(() => {
+        if (vigente) setCargando(false);
+      });
+
+    return () => {
+      vigente = false;
+    };
+  }, [recarga]);
+
+  function abrirFormulario() {
+    setBorrador(BORRADOR_VACIO);
+    setErrorFormulario(null);
+    setConfirmacion(null);
+    setModalAbierto(true);
+  }
+
+  function cerrarFormulario() {
+    if (guardando) return;
+    setModalAbierto(false);
+    setErrorFormulario(null);
+  }
+
+  function actualizarCampo<K extends keyof BorradorUsuario>(
+    campo: K,
+    valor: BorradorUsuario[K],
+  ) {
+    setBorrador((actual) => ({ ...actual, [campo]: valor }));
+  }
+
+  async function registrarUsuario(evento: FormEvent<HTMLFormElement>) {
+    evento.preventDefault();
+    setErrorFormulario(null);
+
+    const datos: AltaUsuario = {
+      nombre: borrador.nombre.trim(),
+      ape_paterno: borrador.ape_paterno.trim(),
+      ape_materno: borrador.ape_materno.trim(),
+      usuario: borrador.usuario.trim(),
+      contrasena: borrador.contrasena,
+      rol: borrador.rol,
+    };
+
+    if (borrador.rol === "medicos") {
+      const idClinica = Number(borrador.id_clinica);
+      if (!Number.isInteger(idClinica) || idClinica < 1) {
+        setErrorFormulario("Selecciona una clínica activa.");
+        return;
+      }
+      datos.id_clinica = idClinica;
+      datos.especialidad = borrador.especialidad.trim();
+      datos.cedula_profesional = borrador.cedula_profesional.trim();
+      if (borrador.telefono.trim()) datos.telefono = borrador.telefono.trim();
+      if (borrador.correo.trim()) datos.correo = borrador.correo.trim();
+    }
+
+    setGuardando(true);
+    try {
+      await usuariosService.crear(datos);
+      setModalAbierto(false);
+      setBorrador(BORRADOR_VACIO);
+      setConfirmacion("El usuario se registró correctamente.");
+      setCargando(true);
+      setRecarga((actual) => actual + 1);
+    } catch (error: unknown) {
+      setErrorFormulario(
+        error instanceof Error ? error.message : "No se pudo registrar el usuario.",
+      );
+    } finally {
+      setGuardando(false);
+    }
   }
 
   return (
@@ -49,99 +164,78 @@ export function UsuariosPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-brand-800">Gestión de usuarios</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            {USUARIOS_DEMO.length} usuarios registrados
+          <p className="mt-0.5 text-sm text-gray-500">
+            {cargando ? "Cargando usuarios…" : `${usuarios.length} usuarios registrados`}
           </p>
         </div>
         <Button
           variante="primary"
           icono={<UserPlus size={16} />}
-          onClick={() =>
-            mostrarToast("DEMO: En producción, esto abriría el formulario de alta de usuario.")
-          }
+          onClick={abrirFormulario}
         >
           Nuevo usuario
         </Button>
       </div>
 
+      {confirmacion && (
+        <p role="status" className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800">
+          {confirmacion}
+        </p>
+      )}
+      {errorCarga && (
+        <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {errorCarga}
+          <Button
+            className="ml-3"
+            variante="secondary"
+            tamaño="sm"
+            onClick={() => {
+              setCargando(true);
+              setRecarga((actual) => actual + 1);
+            }}
+          >
+            Reintentar
+          </Button>
+        </div>
+      )}
+
       <Card padding={false}>
-        <CardHeader
-          titulo="Usuarios del sistema"
-          subtitulo="Todos los roles y clínicas"
-        />
+        <CardHeader titulo="Usuarios del sistema" subtitulo="Cuentas registradas en ClinicTec" />
         <div className="overflow-x-auto">
           <table className="w-full text-sm" aria-label="Lista de usuarios">
             <thead>
               <tr className="bg-brand-100 text-brand-800">
-                <th className="text-left px-4 py-3 font-semibold">Usuario</th>
-                <th className="text-left px-4 py-3 font-semibold hidden md:table-cell">Correo</th>
-                <th className="text-left px-4 py-3 font-semibold">Rol</th>
-                <th className="text-left px-4 py-3 font-semibold hidden lg:table-cell">Clínica</th>
-                <th className="text-left px-4 py-3 font-semibold">Estado</th>
-                <th className="text-left px-4 py-3 font-semibold">Acciones</th>
+                <th className="px-4 py-3 text-left font-semibold">Nombre</th>
+                <th className="hidden px-4 py-3 text-left font-semibold md:table-cell">Usuario</th>
+                <th className="px-4 py-3 text-left font-semibold">Rol</th>
+                <th className="hidden px-4 py-3 text-left font-semibold lg:table-cell">Clínica / especialidad</th>
               </tr>
             </thead>
             <tbody>
-              {USUARIOS_DEMO.map((u, i) => (
+              {cargando && (
+                <tr><td className="px-4 py-8 text-center text-gray-500" colSpan={4}>Cargando usuarios…</td></tr>
+              )}
+              {!cargando && !errorCarga && usuarios.length === 0 && (
+                <tr><td className="px-4 py-8 text-center text-gray-500" colSpan={4}>No hay usuarios registrados.</td></tr>
+              )}
+              {!cargando && usuarios.map((usuario, index) => (
                 <tr
-                  key={u.id}
-                  className={`border-t border-brand-200 hover:bg-brand-100 transition-colors ${
-                    i % 2 === 0 ? "bg-white" : "bg-brand-50"
-                  }`}
+                  key={usuario.id_usuario}
+                  className={`border-t border-brand-200 transition-colors hover:bg-brand-100 ${index % 2 === 0 ? "bg-white" : "bg-brand-50"}`}
                 >
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-full bg-brand-500 text-white flex items-center justify-center text-xs font-bold select-none flex-shrink-0">
-                        {u.nombre.split(" ").map((n) => n[0]).slice(0, 2).join("")}
-                      </div>
-                      <span className="font-medium text-gray-800">{u.nombre}</span>
-                    </div>
+                    <span className="font-medium text-gray-800">
+                      {[usuario.nombre, usuario.ape_paterno, usuario.ape_materno].filter(Boolean).join(" ")}
+                    </span>
                   </td>
-                  <td className="px-4 py-3 text-gray-500 hidden md:table-cell text-xs">
-                    {u.correo}
-                  </td>
+                  <td className="hidden px-4 py-3 text-gray-500 md:table-cell">{usuario.usuario}</td>
                   <td className="px-4 py-3">
-                    <Badge variante={variantesRol[u.rol]}>
-                      {etiquetasRol[u.rol]}
-                    </Badge>
+                    <Badge variante={VARIANTES_ROL[usuario.rol]}>{ETIQUETAS_ROL[usuario.rol]}</Badge>
                   </td>
-                  <td className="px-4 py-3 text-gray-600 hidden lg:table-cell">
-                    {u.clinica}
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge variante={u.activo ? "success" : "default"}>
-                      {u.activo ? "Activo" : "Inactivo"}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1.5">
-                      <Button
-                        variante="ghost"
-                        tamaño="sm"
-                        icono={<Edit size={14} />}
-                        onClick={() =>
-                          mostrarToast("DEMO: En producción, esto abriría la edición del usuario.")
-                        }
-                        aria-label={`Editar ${u.nombre}`}
-                      />
-                      <Button
-                        variante="ghost"
-                        tamaño="sm"
-                        icono={
-                          u.activo ? (
-                            <ToggleRight size={16} className="text-brand-500" />
-                          ) : (
-                            <ToggleLeft size={16} className="text-gray-400" />
-                          )
-                        }
-                        onClick={() =>
-                          mostrarToast(
-                            `DEMO: En producción, esto ${u.activo ? "desactivaría" : "reactivaría"} la cuenta de ${u.nombre}.`
-                          )
-                        }
-                        aria-label={`${u.activo ? "Desactivar" : "Reactivar"} ${u.nombre}`}
-                      />
-                    </div>
+                  <td className="hidden px-4 py-3 text-gray-600 lg:table-cell">
+                    {usuario.medico
+                      ? `${usuario.medico.nombre_clinica} · ${usuario.medico.especialidad}`
+                      : "—"}
                   </td>
                 </tr>
               ))}
@@ -150,11 +244,81 @@ export function UsuariosPage() {
         </div>
       </Card>
 
-      {toast && (
-        <div className="fixed bottom-6 right-6 z-50 max-w-sm">
-          <ToastDemo mensaje={toast} tipo="info" onCerrar={() => setToast(null)} />
-        </div>
-      )}
+      <Modal abierto={modalAbierto} titulo="Registrar usuario" onCerrar={cerrarFormulario} ancho="max-w-2xl">
+        <form className="space-y-4" onSubmit={registrarUsuario}>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="space-y-1 text-sm font-medium text-gray-700">
+              Nombre
+              <input className={CAMPO} value={borrador.nombre} onChange={(e) => actualizarCampo("nombre", e.target.value)} maxLength={100} required />
+            </label>
+            <label className="space-y-1 text-sm font-medium text-gray-700">
+              Apellido paterno
+              <input className={CAMPO} value={borrador.ape_paterno} onChange={(e) => actualizarCampo("ape_paterno", e.target.value)} maxLength={100} required />
+            </label>
+            <label className="space-y-1 text-sm font-medium text-gray-700">
+              Apellido materno
+              <input className={CAMPO} value={borrador.ape_materno} onChange={(e) => actualizarCampo("ape_materno", e.target.value)} maxLength={100} required />
+            </label>
+            <label className="space-y-1 text-sm font-medium text-gray-700">
+              Nombre de usuario
+              <input className={CAMPO} autoComplete="username" value={borrador.usuario} onChange={(e) => actualizarCampo("usuario", e.target.value)} maxLength={100} required />
+            </label>
+            <label className="space-y-1 text-sm font-medium text-gray-700">
+              Contraseña (mínimo 12 caracteres)
+              <input className={CAMPO} type="password" autoComplete="new-password" value={borrador.contrasena} onChange={(e) => actualizarCampo("contrasena", e.target.value)} minLength={12} maxLength={128} required />
+            </label>
+            <label className="space-y-1 text-sm font-medium text-gray-700">
+              Rol
+              <select className={CAMPO} value={borrador.rol} onChange={(e) => actualizarCampo("rol", e.target.value as RolCuenta)}>
+                <option value="recepcion">Recepción</option>
+                <option value="medicos">Médico</option>
+                <option value="administrador">Administrador</option>
+              </select>
+            </label>
+          </div>
+
+          {borrador.rol === "medicos" && (
+            <fieldset className="space-y-4 rounded-lg border border-brand-200 p-4">
+              <legend className="px-1 text-sm font-semibold text-brand-800">Perfil médico</legend>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="space-y-1 text-sm font-medium text-gray-700">
+                  Clínica
+                  <select className={CAMPO} value={borrador.id_clinica} onChange={(e) => actualizarCampo("id_clinica", e.target.value)} required>
+                    <option value="">Selecciona una clínica</option>
+                    {clinicas.map((clinica) => (
+                      <option key={clinica.id_clinica} value={clinica.id_clinica}>{clinica.nombre}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="space-y-1 text-sm font-medium text-gray-700">
+                  Especialidad
+                  <input className={CAMPO} value={borrador.especialidad} onChange={(e) => actualizarCampo("especialidad", e.target.value)} maxLength={100} required />
+                </label>
+                <label className="space-y-1 text-sm font-medium text-gray-700">
+                  Cédula profesional
+                  <input className={CAMPO} value={borrador.cedula_profesional} onChange={(e) => actualizarCampo("cedula_profesional", e.target.value)} maxLength={50} required />
+                </label>
+                <label className="space-y-1 text-sm font-medium text-gray-700">
+                  Teléfono (opcional)
+                  <input className={CAMPO} type="tel" value={borrador.telefono} onChange={(e) => actualizarCampo("telefono", e.target.value)} maxLength={20} />
+                </label>
+                <label className="space-y-1 text-sm font-medium text-gray-700 sm:col-span-2">
+                  Correo (opcional)
+                  <input className={CAMPO} type="email" value={borrador.correo} onChange={(e) => actualizarCampo("correo", e.target.value)} maxLength={100} />
+                </label>
+              </div>
+            </fieldset>
+          )}
+
+          {errorFormulario && (
+            <p role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{errorFormulario}</p>
+          )}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variante="secondary" onClick={cerrarFormulario} disabled={guardando}>Cancelar</Button>
+            <Button type="submit" cargando={guardando}>Registrar usuario</Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }
