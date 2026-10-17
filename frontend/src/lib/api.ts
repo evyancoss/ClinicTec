@@ -2,12 +2,13 @@
  * lib/api.ts
  * Cliente HTTP centralizado para la API de ClinicTec.
  *
- * - La URL base se configura desde VITE_API_URL (no expone secretos del backend).
+ * - VITE_API_URL permite configurar el backend local; producción usa el mismo origen.
  * - El access token se adjunta automáticamente desde el AuthContext.
  * - Los errores devuelven el mensaje del campo `error` de la respuesta.
  */
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:5000";
+const BASE_URL = import.meta.env.VITE_API_URL
+  ?? (import.meta.env.PROD ? "" : "http://127.0.0.1:5000");
 
 export interface ApiResponse<T = unknown> {
   data: T | null;

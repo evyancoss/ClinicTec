@@ -64,7 +64,7 @@ def health_db():
 
     except OperationalError as exc:
         # Error de red, credenciales incorrectas, host no disponible
-        log.error("Error de conexión a la base de datos: %s", _safe_error(exc))
+        log.error("Error de conexión a la base de datos (%s).", _safe_error(exc))
         return jsonify({
             "data": None,
             "error": (
@@ -76,7 +76,7 @@ def health_db():
         }), 503
 
     except SQLAlchemyError as exc:
-        log.error("Error SQLAlchemy: %s", _safe_error(exc))
+        log.error("Error SQLAlchemy (%s).", _safe_error(exc))
         return jsonify({
             "data": None,
             "error": "Error al consultar la base de datos.",
@@ -89,9 +89,4 @@ def _safe_error(exc: Exception) -> str:
     Devuelve una representación del error sin incluir
     cadenas de conexión, contraseñas ni tokens.
     """
-    msg = str(exc)
-    # Eliminar posibles fragmentos con credenciales en mensajes de psycopg2
-    for parte in ["password", "://", "@", "postgresql", "postgres"]:
-        if parte in msg.lower():
-            return type(exc).__name__
-    return msg[:200]  # Limitar longitud para no saturar logs
+    return type(exc).__name__

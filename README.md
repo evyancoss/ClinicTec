@@ -39,16 +39,18 @@ Consulta la carpeta `docs/` para encontrar:
 - [`DATABASE.md`](docs/DATABASE.md) — Esquema de tablas y guía de conexión.
 - [`PRIVACIDAD_Y_DESPLIEGUE.md`](docs/PRIVACIDAD_Y_DESPLIEGUE.md) — Preparación del piloto escolar, configuración de despliegue y privacidad.
 
-## Variables de entorno
+## Variables de entorno y despliegue
 
-El backend requiere un archivo `.env` **local, no versionado** con la siguiente variable:
+Para desarrollo local, configura `backend/.env` a partir de
+[`backend/.env.example`](backend/.env.example) y `frontend/.env` a partir de
+[`frontend/.env.example`](frontend/.env.example). En el despliegue escolar,
+`DATABASE_URL` y los secretos se configuran solamente en Render; Vercel no
+necesita variables `VITE_*` para la API porque las rutas `/api/*` se reescriben
+al backend. Consulta [`docs/PRIVACIDAD_Y_DESPLIEGUE.md`](docs/PRIVACIDAD_Y_DESPLIEGUE.md)
+para los pasos, configuración y verificaciones previas a compartir el enlace.
 
-```
-DATABASE_URL=postgresql+psycopg2://<usuario>:<contraseña>@<host>:<puerto>/<base_de_datos>
-```
-
-> **Nunca incluyas credenciales reales en archivos versionados.**
-> Agrega `.env` a tu `.gitignore` antes del primer commit.
+> Nunca incluyas credenciales reales en archivos versionados ni variables
+> `VITE_*`. El despliegue no se ha publicado ni conectado desde este repositorio.
 
 ## Estado del proyecto
 

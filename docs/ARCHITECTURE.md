@@ -3,29 +3,30 @@
 ## 1. Visión general
 
 ```
-┌─────────────────────────────┐
-│        NAVEGADOR            │
-│   React + Vite + TS         │
-│   Tailwind CSS + shadcn/ui  │
-│   React Router              │
-└────────────┬────────────────┘
-             │ HTTPS / JSON (REST)
+┌──────────────────────────┐
+│ NAVEGADOR                │
+│ React + Vite + TypeScript│
+└────────────┬─────────────┘
+             │ HTTPS, mismo origen
              ▼
-┌─────────────────────────────┐
-│        BACKEND              │
-│   Flask (Python)            │
-│   Flask Blueprints          │
-│   SQLAlchemy ORM            │
-│   Flask-Migrate             │
-└────────────┬────────────────┘
-             │ DATABASE_URL (psycopg2)
-             ▼
-┌─────────────────────────────┐
-│     SUPABASE (PostgreSQL)   │
-│   Tablas ya existentes      │
-│   Conexión directa a PG     │
-└─────────────────────────────┘
+┌──────────────────────────┐       rewrite /api/*       ┌─────────────────────┐
+│ VERCEL                   │ ──────────────────────────► │ RENDER              │
+│ Frontend estático, dist/ │                             │ Flask + Gunicorn    │
+└──────────────────────────┘                             └──────────┬──────────┘
+                                                                    │ DATABASE_URL
+                                                                    ▼
+                                                       ┌────────────────────────┐
+                                                       │ SUPABASE (PostgreSQL)  │
+                                                       │ Esquema existente      │
+                                                       └────────────────────────┘
 ```
+
+La configuración preparada para el piloto está en `frontend/vercel.json`,
+`render.yaml` y `.python-version`; sus pasos y variables están en
+`docs/PRIVACIDAD_Y_DESPLIEGUE.md`. El rewrite mantiene la URL del navegador
+bajo Vercel para que la cookie de refresh HttpOnly/Secure siga siendo
+first-party. El host de destino Render es un marcador hasta que Render asigne
+el URL del servicio. Esta configuración no representa un despliegue realizado.
 
 ---
 

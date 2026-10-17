@@ -9,12 +9,18 @@ from .config import Config, ProductionConfig, TestingConfig
 from .extensions import db, migrate, cors
 
 
+class _ClinicTecFlask(Flask):
+    def log_exception(self, exc_info):
+        exception = exc_info[1]
+        self.logger.error("Error interno (%s).", type(exception).__name__)
+
+
 def create_app(config_class=None):
     """Crea y devuelve la aplicación Flask configurada."""
     if config_class is None:
         import os
         config_class = ProductionConfig if os.environ.get("FLASK_ENV") == "production" else Config
-    app = Flask(__name__)
+    app = _ClinicTecFlask(__name__)
     app.config.from_object(config_class)
     if config_class is ProductionConfig:
         _validar_configuracion_produccion(app)
@@ -70,6 +76,7 @@ def create_app(config_class=None):
 def _validar_configuracion_produccion(app: Flask) -> None:
     """Falla al arrancar si el despliegue conserva claves o URLs de ejemplo."""
     import os
+    from urllib.parse import urlsplit
 
     required = ("SECRET_KEY", "JWT_SECRET_KEY", "DATABASE_URL", "CORS_ORIGINS")
     missing = [key for key in required if not os.environ.get(key, "").strip()]
@@ -86,11 +93,21 @@ def _validar_configuracion_produccion(app: Flask) -> None:
         raise RuntimeError("DATABASE_URL debe apuntar a PostgreSQL en producción.")
     if any(marker in app.config["SQLALCHEMY_DATABASE_URI"].upper() for marker in ("USUARIO", "CONTRASENA", "HOST:")):
         raise RuntimeError("DATABASE_URL todavía contiene valores de ejemplo.")
-    if not app.config.get("CORS_ORIGINS") or any(
-        not origin.startswith("https://") or "*" in origin
-        for origin in app.config["CORS_ORIGINS"]
+    origins = app.config.get("CORS_ORIGINS", [])
+    if len(origins) != 1:
+        raise RuntimeError("CORS_ORIGINS debe contener exactamente el origen HTTPS del frontend.")
+    parsed_origin = urlsplit(origins[0])
+    if (
+        parsed_origin.scheme != "https"
+        or not parsed_origin.netloc
+        or parsed_origin.username
+        or parsed_origin.password
+        or parsed_origin.path
+        or parsed_origin.query
+        or parsed_origin.fragment
+        or "*" in origins[0]
     ):
-        raise RuntimeError("CORS_ORIGINS debe contener únicamente orígenes HTTPS explícitos del frontend.")
+        raise RuntimeError("CORS_ORIGINS debe ser un único origen HTTPS válido, sin rutas ni comodines.")
     try:
         clinic_id = int(os.environ["RECEPTION_CLINIC_ID"])
     except (KeyError, ValueError):
@@ -125,6 +142,4 @@ def _register_error_handlers(app: Flask) -> None:
 
     @app.errorhandler(500)
     def internal_error(e):
-        # No incluir el traceback completo en la respuesta
-        app.logger.error("Error interno: %s", str(e))
         return jsonify({"data": None, "error": "Error interno del servidor.", "status": 500}), 500
