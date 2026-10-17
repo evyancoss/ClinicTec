@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { setAccessToken, setUnauthorizedHandler } from "../lib/api";
 import { authService } from "../lib/authService";
 import { rolVisualDeCuenta, type Rol } from "../types";
-import { DemoContext, USUARIOS_DEMO } from "./demo-context";
+import { DemoContext } from "./demo-context";
 
 export function DemoProvider({ children }: { children: ReactNode }) {
   const [autenticacionCargando, setAutenticacionCargando] = useState(true);
@@ -62,10 +62,22 @@ export function DemoProvider({ children }: { children: ReactNode }) {
         autenticado,
         setAutenticado,
         modoDemo,
-        setModoDemo,
+        setModoDemo: () => setModoDemo(false),
         usuarioAutenticado,
         setUsuarioAutenticado,
-        usuarioActivo: USUARIOS_DEMO[rolActivo],
+        usuarioActivo: {
+          id: usuarioAutenticado?.id_usuario ?? 0,
+          nombre: usuarioAutenticado
+            ? `${usuarioAutenticado.nombre} ${usuarioAutenticado.ape_paterno} ${usuarioAutenticado.ape_materno}`.trim()
+            : "",
+          rol: usuarioAutenticado
+            ? rolVisualDeCuenta(usuarioAutenticado.rol) ?? rolActivo
+            : rolActivo,
+          clinica: "",
+          avatar: usuarioAutenticado
+            ? `${usuarioAutenticado.nombre[0] ?? ""}${usuarioAutenticado.ape_paterno[0] ?? ""}`.toUpperCase()
+            : "",
+        },
       }}
     >
       {children}

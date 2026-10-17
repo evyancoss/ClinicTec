@@ -11,7 +11,6 @@ import { useAgendaCitas } from "../../hooks/useAgendaCitas";
 import { citasService } from "../../lib/citasService";
 import { medicosService, type MedicoAPI } from "../../lib/medicosService";
 import { pacientesService, type PacienteAPI } from "../../lib/pacientesService";
-import { useDemo } from "../../store/demo-context";
 import type { Cita, EstadoCita } from "../../types";
 
 type FiltroEstado = EstadoCita | "todos";
@@ -27,11 +26,15 @@ function etiquetaFecha(fecha: string): string {
 }
 
 export function AgendaPage() {
-  const { modoDemo } = useDemo();
   const [busqueda, setBusqueda] = useState("");
   const [filtroMedico, setFiltroMedico] = useState("todos");
   const [filtroEstado, setFiltroEstado] = useState<FiltroEstado>("todos");
   const [cancelandoId, setCancelandoId] = useState<number | null>(null);
+  const [reprogramandoId, setReprogramandoId] = useState<number | null>(null);
+  const [citaReprogramando, setCitaReprogramando] = useState<Cita | null>(null);
+  const [fechaReprogramada, setFechaReprogramada] = useState("");
+  const [horaReprogramada, setHoraReprogramada] = useState("");
+  const [errorReprogramacion, setErrorReprogramacion] = useState<string | null>(null);
   const [mensajeAccion, setMensajeAccion] = useState<string | null>(null);
   const [errorAccion, setErrorAccion] = useState<string | null>(null);
   const [modalNuevaCita, setModalNuevaCita] = useState(false);
@@ -57,10 +60,10 @@ export function AgendaPage() {
     recargarCitas,
     setPagina,
     total,
-  } = useAgendaCitas(modoDemo);
+  } = useAgendaCitas();
 
   useEffect(() => {
-    if (!modalNuevaCita || modoDemo) return;
+    if (!modalNuevaCita) return;
     let vigente = true;
     async function cargarOpciones() {
       setCargandoOpciones(true);
@@ -78,9 +81,8 @@ export function AgendaPage() {
         }
         if (!vigente) return;
         setPacientesOpciones(respuestaPacientes.data.pacientes);
-        setMedicosOpciones(
-          respuestaMedicos.data.filter((medico) => medico.id_clinica === 1),
-        );
+        // El backend limita la lista a la clínica asignada a recepción.
+        setMedicosOpciones(respuestaMedicos.data);
       } catch (errorDesconocido: unknown) {
         if (!vigente) return;
         setErrorNuevaCita(
@@ -96,7 +98,7 @@ export function AgendaPage() {
     return () => {
       vigente = false;
     };
-  }, [modalNuevaCita, modoDemo]);
+  }, [modalNuevaCita]);
 
   async function buscarPacientes() {
     setCargandoOpciones(true);
@@ -126,7 +128,6 @@ export function AgendaPage() {
   }
 
   function abrirNuevaCita() {
-    if (modoDemo) return;
     setIdPacienteNuevo("");
     setIdMedicoNuevo("");
     setFechaNueva(fecha);
@@ -139,7 +140,6 @@ export function AgendaPage() {
 
   async function crearCita(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
-    if (modoDemo) return;
     setGuardandoCita(true);
     setErrorNuevaCita(null);
     try {
@@ -170,7 +170,7 @@ export function AgendaPage() {
   }
 
   async function cancelarCita(cita: Cita) {
-    if (modoDemo || cita.estado !== "Agendada") return;
+    if (cita.estado !== "Agendada") return;
     if (!window.confirm(`¿Cancelar la cita de ${cita.nombre_paciente}?`)) return;
 
     setCancelandoId(cita.id_cita);
@@ -192,6 +192,52 @@ export function AgendaPage() {
       );
     } finally {
       setCancelandoId(null);
+    }
+  }
+
+  function abrirReprogramacion(cita: Cita) {
+    if (cita.estado !== "Agendada") return;
+    setCitaReprogramando(cita);
+    setFechaReprogramada(cita.fecha);
+    setHoraReprogramada(cita.hora);
+    setErrorReprogramacion(null);
+    setMensajeAccion(null);
+  }
+
+  async function reprogramarCita(evento: FormEvent<HTMLFormElement>) {
+    evento.preventDefault();
+    if (!citaReprogramando) return;
+    const cita = citaReprogramando;
+    setReprogramandoId(cita.id_cita);
+    setErrorReprogramacion(null);
+    setMensajeAccion(null);
+    setErrorAccion(null);
+
+    try {
+      const respuesta = await citasService.reprogramar(cita.id_cita, {
+        fecha: fechaReprogramada,
+        hora: horaReprogramada,
+      });
+      if (respuesta.error || !respuesta.data) {
+        setErrorReprogramacion(
+          respuesta.error ?? "No se pudo reprogramar la cita.",
+        );
+        return;
+      }
+      setCitaReprogramando(null);
+      setMensajeAccion(
+        "La cita se reprogramó correctamente. El horario anterior no se conserva.",
+      );
+      if (fechaReprogramada !== fecha) cambiarFecha(fechaReprogramada);
+      else recargarCitas();
+    } catch (errorDesconocido) {
+      setErrorReprogramacion(
+        errorDesconocido instanceof Error
+          ? errorDesconocido.message
+          : "No se pudo reprogramar la cita.",
+      );
+    } finally {
+      setReprogramandoId(null);
     }
   }
 
@@ -233,26 +279,16 @@ export function AgendaPage() {
           />
           <Button
             variante="primary"
-            disabled={modoDemo}
-            title={modoDemo ? "El alta no está disponible en modo demostración." : undefined}
-            aria-label={modoDemo ? "Nueva cita (no disponible en demo)" : "Nueva cita"}
             onClick={abrirNuevaCita}
           >
             Nueva cita
           </Button>
           <p className="basis-full text-right text-xs text-gray-500">
-            {modoDemo
-              ? "El alta solo está disponible en una sesión real."
-              : "Las citas nuevas duran 60 minutos; el horario se valida en el servidor."}
+            Las citas nuevas duran 60 minutos; el horario se valida en el servidor.
           </p>
         </div>
       </div>
 
-      {modoDemo && (
-        <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
-          Datos ficticios de demostración; no provienen de la API.
-        </p>
-      )}
       {mensajeAccion && (
         <p role="status" className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800">
           {mensajeAccion}
@@ -393,8 +429,10 @@ export function AgendaPage() {
             <TablaCitas
               citas={citasFiltradas}
               modoRecepcion
-              onCancelarCita={modoDemo ? undefined : cancelarCita}
+              onCancelarCita={cancelarCita}
+              onReprogramarCita={abrirReprogramacion}
               cancelandoId={cancelandoId}
+              reprogramandoId={reprogramandoId}
             />
           )}
         </div>
@@ -506,6 +544,62 @@ export function AgendaPage() {
               disabled={cargandoOpciones || medicosOpciones.length === 0}
             >
               Guardar cita
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        abierto={citaReprogramando !== null}
+        titulo="Reprogramar cita"
+        onCerrar={() => {
+          if (reprogramandoId === null) setCitaReprogramando(null);
+        }}
+      >
+        <form className="space-y-4" onSubmit={reprogramarCita}>
+          {citaReprogramando && (
+            <p className="text-sm text-gray-600">
+              Actualizarás la misma cita de {citaReprogramando.nombre_paciente}.
+              No quedará guardado el horario anterior.
+            </p>
+          )}
+          <Input
+            label="Nueva fecha"
+            type="date"
+            value={fechaReprogramada}
+            onChange={(event) => setFechaReprogramada(event.target.value)}
+            required
+          />
+          <Input
+            label="Nueva hora"
+            type="time"
+            value={horaReprogramada}
+            onChange={(event) => setHoraReprogramada(event.target.value)}
+            required
+          />
+          <p className="text-sm text-gray-600">
+            Duración fija: 60 minutos. El servidor valida empalmes antes de guardar.
+          </p>
+          {errorReprogramacion && (
+            <p role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              {errorReprogramacion}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variante="secondary"
+              onClick={() => setCitaReprogramando(null)}
+              disabled={reprogramandoId !== null}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              cargando={reprogramandoId !== null}
+              disabled={!citaReprogramando || citaReprogramando.estado !== "Agendada"}
+            >
+              Guardar horario
             </Button>
           </div>
         </form>

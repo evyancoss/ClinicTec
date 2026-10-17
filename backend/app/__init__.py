@@ -5,14 +5,19 @@ Crea y configura la instancia Flask con todos sus blueprints y extensiones.
 """
 
 from flask import Flask
-from .config import Config, TestingConfig
+from .config import Config, ProductionConfig, TestingConfig
 from .extensions import db, migrate, cors
 
 
-def create_app(config_class=Config):
+def create_app(config_class=None):
     """Crea y devuelve la aplicación Flask configurada."""
+    if config_class is None:
+        import os
+        config_class = ProductionConfig if os.environ.get("FLASK_ENV") == "production" else Config
     app = Flask(__name__)
     app.config.from_object(config_class)
+    if config_class is ProductionConfig:
+        _validar_configuracion_produccion(app)
 
     # ── Inicializar extensiones ──────────────────────────────────────────────
     db.init_app(app)
@@ -32,18 +37,23 @@ def create_app(config_class=Config):
     from .blueprints.auth      import auth_bp
     from .blueprints.citas     import citas_bp
     from .blueprints.pacientes import pacientes_bp
+    from .blueprints.consultas import consultas_bp
     from .blueprints.medicos   import medicos_bp
     from .blueprints.usuarios  import usuarios_bp
+    from .blueprints.admin     import admin_bp
+    from .blueprints.clinicas  import clinicas_bp
     app.register_blueprint(health_bp,    url_prefix="/api/health")
     app.register_blueprint(auth_bp,      url_prefix="/api/auth")
     app.register_blueprint(citas_bp,     url_prefix="/api/citas")
     app.register_blueprint(pacientes_bp, url_prefix="/api/pacientes")
+    app.register_blueprint(consultas_bp, url_prefix="/api")
     app.register_blueprint(medicos_bp,   url_prefix="/api/medicos")
     app.register_blueprint(usuarios_bp,  url_prefix="/api/usuarios")
+    app.register_blueprint(admin_bp,     url_prefix="/api/admin")
+    app.register_blueprint(clinicas_bp,  url_prefix="/api/clinicas")
 
     # ── Registrar comandos CLI ────────────────────────────────────────────────
     from .commands import register_commands
-    print(app)
     register_commands(app)
 
     # ── Blueprint de pruebas (solo en testing) ────────────────────────────────
@@ -55,6 +65,38 @@ def create_app(config_class=Config):
     _register_error_handlers(app)
 
     return app
+
+
+def _validar_configuracion_produccion(app: Flask) -> None:
+    """Falla al arrancar si el despliegue conserva claves o URLs de ejemplo."""
+    import os
+
+    required = ("SECRET_KEY", "JWT_SECRET_KEY", "DATABASE_URL", "CORS_ORIGINS")
+    missing = [key for key in required if not os.environ.get(key, "").strip()]
+    if missing:
+        raise RuntimeError("Faltan variables de producción requeridas: " + ", ".join(missing))
+    for key in ("SECRET_KEY", "JWT_SECRET_KEY"):
+        value = os.environ[key].strip()
+        placeholder_markers = ("cambia_esto", "xxxxxxxx", "genera_", "aleatoria", "placeholder")
+        if len(value) < 32 or any(marker in value.lower() for marker in placeholder_markers):
+            raise RuntimeError(f"{key} debe ser una clave aleatoria de al menos 32 caracteres.")
+    if os.environ["SECRET_KEY"].strip() == os.environ["JWT_SECRET_KEY"].strip():
+        raise RuntimeError("SECRET_KEY y JWT_SECRET_KEY deben tener valores diferentes.")
+    if not app.config.get("SQLALCHEMY_DATABASE_URI", "").startswith("postgresql"):
+        raise RuntimeError("DATABASE_URL debe apuntar a PostgreSQL en producción.")
+    if any(marker in app.config["SQLALCHEMY_DATABASE_URI"].upper() for marker in ("USUARIO", "CONTRASENA", "HOST:")):
+        raise RuntimeError("DATABASE_URL todavía contiene valores de ejemplo.")
+    if not app.config.get("CORS_ORIGINS") or any(
+        not origin.startswith("https://") or "*" in origin
+        for origin in app.config["CORS_ORIGINS"]
+    ):
+        raise RuntimeError("CORS_ORIGINS debe contener únicamente orígenes HTTPS explícitos del frontend.")
+    try:
+        clinic_id = int(os.environ["RECEPTION_CLINIC_ID"])
+    except (KeyError, ValueError):
+        raise RuntimeError("RECEPTION_CLINIC_ID debe identificar la clínica operativa.") from None
+    if clinic_id < 1:
+        raise RuntimeError("RECEPTION_CLINIC_ID debe ser un entero positivo.")
 
 
 def _register_error_handlers(app: Flask) -> None:

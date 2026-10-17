@@ -1,10 +1,8 @@
 import { useEffect, useState } from "react";
-import { CITAS_DEMO, PROXIMAS_CITAS_DEMO } from "../utils/datosDemo";
 import { citasService } from "../lib/citasService";
 import type { Cita } from "../types";
 
 const POR_PAGINA = 20;
-const FECHA_DEMO_INICIAL = "2026-10-10";
 
 function fechaLocalActual(): string {
   const hoy = new Date();
@@ -14,10 +12,12 @@ function fechaLocalActual(): string {
   return `${year}-${month}-${day}`;
 }
 
-export function useAgendaCitas(modoDemo: boolean, nombreMedicoDemo?: string) {
-  const [fecha, setFecha] = useState(() =>
-    modoDemo ? FECHA_DEMO_INICIAL : fechaLocalActual()
-  );
+export function useAgendaCitas(_modoDemo?: boolean, _nombreMedicoDemo?: string) {
+  // Los parámetros opcionales se conservan temporalmente por compatibilidad con
+  // llamadas existentes; las agendas consultan siempre la API.
+  void _modoDemo;
+  void _nombreMedicoDemo;
+  const [fecha, setFecha] = useState(fechaLocalActual);
   const [pagina, setPagina] = useState(1);
   const [citas, setCitas] = useState<Cita[]>([]);
   const [total, setTotal] = useState(0);
@@ -32,23 +32,6 @@ export function useAgendaCitas(modoDemo: boolean, nombreMedicoDemo?: string) {
     async function cargar() {
       setCargando(true);
       setError(null);
-
-      if (modoDemo) {
-        const todasLasCitasDemo = [...CITAS_DEMO, ...PROXIMAS_CITAS_DEMO];
-        const citasDeFecha = todasLasCitasDemo.filter((cita) =>
-          cita.fecha === fecha
-          && (!nombreMedicoDemo || cita.nombre_medico === nombreMedicoDemo)
-        );
-        const inicio = (pagina - 1) * POR_PAGINA;
-        const citasPagina = citasDeFecha.slice(inicio, inicio + POR_PAGINA);
-        if (vigente) {
-          setCitas(citasPagina);
-          setTotal(citasDeFecha.length);
-          setPaginas(Math.ceil(citasDeFecha.length / POR_PAGINA));
-          setCargando(false);
-        }
-        return;
-      }
 
       try {
         const respuesta = await citasService.listar(fecha, pagina, POR_PAGINA);
@@ -82,7 +65,7 @@ export function useAgendaCitas(modoDemo: boolean, nombreMedicoDemo?: string) {
     return () => {
       vigente = false;
     };
-  }, [fecha, modoDemo, nombreMedicoDemo, pagina, version]);
+  }, [fecha, pagina, version]);
 
   function cambiarFecha(nuevaFecha: string) {
     setFecha(nuevaFecha);
@@ -99,7 +82,6 @@ export function useAgendaCitas(modoDemo: boolean, nombreMedicoDemo?: string) {
     cambiarFecha,
     error,
     fecha,
-    modoDemo,
     pagina,
     paginas,
     recargarCitas,

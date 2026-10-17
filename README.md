@@ -37,6 +37,7 @@ Consulta la carpeta `docs/` para encontrar:
 - [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) — Arquitectura React → Flask → Supabase PostgreSQL.
 - [`DESIGN_SYSTEM.md`](docs/DESIGN_SYSTEM.md) — Paleta de colores, tipografía y componentes.
 - [`DATABASE.md`](docs/DATABASE.md) — Esquema de tablas y guía de conexión.
+- [`PRIVACIDAD_Y_DESPLIEGUE.md`](docs/PRIVACIDAD_Y_DESPLIEGUE.md) — Preparación del piloto escolar, configuración de despliegue y privacidad.
 
 ## Variables de entorno
 
@@ -58,5 +59,11 @@ DATABASE_URL=postgresql+psycopg2://<usuario>:<contraseña>@<host>:<puerto>/<base
 | 3 | Autenticación y control de roles | ✅ Completada |
 | 4 | Módulo Recepción | ✅ Completada |
 | 5 | Módulos funcionales de pacientes y médicos | ✅ Completada |
-| 6 | Administración y gestión de citas | 🚧 En desarrollo |
-| 7 | Consultas, recetas e historial clínico | ⏳ Pendiente |
+| 6 | Administración y gestión de citas | ✅ Implementada; concurrencia PostgreSQL pendiente |
+| 7 | Consultas, recetas e historial clínico | ✅ Implementada; concurrencia PostgreSQL pendiente |
+
+Las suites locales actuales pasan: 218 pruebas backend y 61 frontend; lint,
+TypeScript y build también pasan. El cierre técnico de las fases 6 y 7 requiere
+probar bloqueos y transacciones concurrentes contra PostgreSQL aislado. No se
+usa Supabase compartido para pruebas de escritura. La siguiente fase aún no está
+definida en la hoja de ruta.

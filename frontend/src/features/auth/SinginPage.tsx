@@ -67,15 +67,6 @@ export function LoginPage() {
     navigate(rol === "medico" ? "/medico/pacientes" : "/recepcion/pacientes");
   }
 
-  function entrarComoDemo() {
-    setAccessToken(null);
-    setUsuarioAutenticado(null);
-    setModoDemo(true);
-    setRolActivo("recepcion");
-    setAutenticado(true);
-    navigate("/recepcion/agenda");
-  }
-
   return (
     <div className="min-h-screen bg-brand-50 flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-md">
@@ -153,26 +144,10 @@ export function LoginPage() {
               cargando={cargando}
               className="w-full mt-6"
             >
-              {cargando ? "Verificando…" : "Registrarse"}
+            {cargando ? "Verificando…" : "Iniciar sesión"}
             </Button>
           </form>
 
-          {/* Separador */}
-          <div className="my-5 flex items-center gap-3">
-            <div className="flex-1 border-t border-brand-200" />
-            <span className="text-xs text-gray-400">o</span>
-            <div className="flex-1 border-t border-brand-200" />
-          </div>
-
-          {/* Acceso rápido a la demo */}
-          <Button
-            variante="secondary"
-            tamaño="lg"
-            className="w-full"
-            onClick={entrarComoDemo}
-          >
-            Registrarse
-          </Button>
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-6">

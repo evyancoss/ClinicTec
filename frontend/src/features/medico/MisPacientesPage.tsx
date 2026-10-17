@@ -1,15 +1,16 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type FormEvent } from "react";
 import { Search, FileText, ClipboardList, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { Card, CardHeader } from "../../components/ui/Card";
-import { ToastDemo } from "../../components/ui/ToastDemo";
 import { EstadoVacio } from "../../components/ui/EstadoVacio";
 import {
   pacientesService,
+  type HistorialPacienteAPI,
   type PacienteAPI,
   type PaginacionAPI,
 } from "../../lib/pacientesService";
+import { consultasService } from "../../lib/consultasService";
 
 // La vista del médico lista sus pacientes a través del historial de citas.
 // El endpoint GET /api/pacientes filtra por médico en el servidor.
@@ -37,12 +38,17 @@ export function MisPacientesPage() {
   const [busqueda, setBusqueda]           = useState("");
   const [busquedaInput, setBusquedaInput] = useState("");
   const [expandido, setExpandido]         = useState<number | null>(null);
-  const [toast, setToast]                 = useState<string | null>(null);
-
-  function mostrarToast(msg: string) {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3500);
-  }
+  const [historial, setHistorial]         = useState<HistorialPacienteAPI | null>(null);
+  const [historialCargando, setHistorialCargando] = useState(false);
+  const [historialError, setHistorialError] = useState<string | null>(null);
+  const [recetaConsultaId, setRecetaConsultaId] = useState<number | null>(null);
+  const [indicacionesReceta, setIndicacionesReceta] = useState("");
+  const [detallesReceta, setDetallesReceta] = useState([{
+    medicamento: "", dosis: "", frecuencia: "", duracion: "", indicaciones: "",
+  }]);
+  const [guardandoReceta, setGuardandoReceta] = useState(false);
+  const [errorReceta, setErrorReceta] = useState<string | null>(null);
+  const [recetaGuardada, setRecetaGuardada] = useState(false);
 
   useEffect(() => {
     let vigente = true;
@@ -77,6 +83,49 @@ export function MisPacientesPage() {
   function handleBuscar() {
     setBusqueda(busquedaInput.trim());
     setPagina(1);
+  }
+
+  async function verHistorial(idPaciente: number) {
+    setExpandido(idPaciente);
+    setHistorial(null);
+    setHistorialError(null);
+    setHistorialCargando(true);
+    const response = await pacientesService.historial(idPaciente);
+    setHistorialCargando(false);
+    if (response.error || !response.data) {
+      setHistorialError(response.error ?? "No se pudo cargar el historial clínico.");
+      return;
+    }
+    setHistorial(response.data);
+  }
+
+  function iniciarReceta(idConsulta: number) {
+    setRecetaConsultaId(idConsulta);
+    setIndicacionesReceta("");
+    setDetallesReceta([{
+      medicamento: "", dosis: "", frecuencia: "", duracion: "", indicaciones: "",
+    }]);
+    setErrorReceta(null);
+    setRecetaGuardada(false);
+  }
+
+  async function emitirReceta(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (recetaConsultaId === null) return;
+    setGuardandoReceta(true);
+    setErrorReceta(null);
+    const response = await consultasService.emitirReceta(recetaConsultaId, {
+      indicaciones: indicacionesReceta,
+      detalles: detallesReceta,
+    });
+    setGuardandoReceta(false);
+    if (response.error || !response.data) {
+      setErrorReceta(response.error ?? "No se pudo emitir la receta.");
+      return;
+    }
+    setRecetaGuardada(true);
+    setRecetaConsultaId(null);
+    if (expandido !== null) await verHistorial(expandido);
   }
 
   return (
@@ -187,18 +236,150 @@ export function MisPacientesPage() {
                     <Button
                       variante="secondary" tamaño="sm"
                       icono={<FileText size={14} />}
-                      onClick={() => mostrarToast("Historial clínico disponible en Fase 7.")}
+                      onClick={() => void verHistorial(p.id_paciente)}
+                      cargando={historialCargando && expandido === p.id_paciente}
                     >
                       Ver historial
                     </Button>
-                    <Button
-                      variante="primary" tamaño="sm"
-                      icono={<ClipboardList size={14} />}
-                      onClick={() => mostrarToast("Nueva consulta disponible en Fase 7.")}
-                    >
-                      Nueva consulta
-                    </Button>
                   </div>
+                  {expandido === p.id_paciente && (
+                    <section className="mt-4 border-t border-brand-200 pt-4" aria-label="Historial clínico">
+                      {recetaGuardada && <p role="status" className="text-sm text-green-800">Receta emitida correctamente.</p>}
+                      {historialCargando ? (
+                        <p role="status" className="text-sm text-gray-500">Cargando historial clínico…</p>
+                      ) : historialError ? (
+                        <p role="alert" className="text-sm text-red-700">{historialError}</p>
+                      ) : historial?.paciente.id_paciente === p.id_paciente ? (
+                        <div className="space-y-4">
+                          <h3 className="font-semibold text-brand-800">Consultas previas</h3>
+                          {historial.citas.length === 0 ? (
+                            <p className="text-sm text-gray-500">No hay citas en tu historial con este paciente.</p>
+                          ) : historial.citas.map((cita) => (
+                            <article key={cita.id_cita} className="rounded-lg border border-brand-200 bg-white p-4">
+                              <p className="text-sm font-medium text-gray-800">
+                                {cita.fecha} · {cita.hora} · {cita.estado}
+                              </p>
+                              {cita.consulta ? (
+                                <div className="mt-3 space-y-3 text-sm">
+                                  {([
+                                    ["Motivo", cita.consulta.motivo],
+                                    ["Diagnóstico", cita.consulta.diagnostico],
+                                    ["Observaciones", cita.consulta.observaciones],
+                                    ["Tratamiento", cita.consulta.tratamiento],
+                                  ] as const).map(([label, value]) => value && (
+                                    <p key={label}><strong>{label}:</strong> {value}</p>
+                                  ))}
+                                  <div className="space-y-2">
+                                    <h4 className="font-semibold">Recetas</h4>
+                                    {cita.consulta.recetas.map((receta) => (
+                                      <div key={receta.id_receta} className="rounded bg-brand-50 p-3">
+                                        <p>{receta.fecha_receta ?? "Fecha no disponible"}</p>
+                                        {receta.indicaciones && <p>{receta.indicaciones}</p>}
+                                        <ul className="mt-2 list-disc pl-5">
+                                          {receta.detalles.map((detalle) => (
+                                            <li key={detalle.id_detalle}>
+                                              {detalle.medicamento}
+                                              {[
+                                                detalle.dosis,
+                                                detalle.frecuencia,
+                                                detalle.duracion,
+                                                detalle.indicaciones,
+                                              ].filter(Boolean).join(" · ") && ` — ${[
+                                                detalle.dosis,
+                                                detalle.frecuencia,
+                                                detalle.duracion,
+                                                detalle.indicaciones,
+                                              ].filter(Boolean).join(" · ")}`}
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <Button
+                                    variante="secondary"
+                                    tamaño="sm"
+                                    icono={<ClipboardList size={14} />}
+                                    onClick={() => iniciarReceta(cita.consulta!.id_consulta)}
+                                  >
+                                    Emitir receta
+                                  </Button>
+                                  {recetaConsultaId === cita.consulta.id_consulta && (
+                                    <form onSubmit={emitirReceta} className="space-y-3 border-t border-brand-200 pt-3">
+                                      {errorReceta && <p role="alert" className="text-sm text-red-700">{errorReceta}</p>}
+                                      <label className="block text-sm font-medium">
+                                        Indicaciones generales
+                                        <textarea
+                                          className="mt-1 w-full rounded border border-brand-200 p-2"
+                                          value={indicacionesReceta}
+                                          maxLength={10000}
+                                          onChange={(event) => setIndicacionesReceta(event.target.value)}
+                                        />
+                                      </label>
+                                      {detallesReceta.map((detalle, index) => (
+                                        <fieldset key={index} className="grid gap-2 rounded border border-brand-200 p-3 sm:grid-cols-2">
+                                          <legend className="px-1 text-sm font-semibold">Medicamento {index + 1}</legend>
+                                          {([
+                                            ["medicamento", "Medicamento", 150],
+                                            ["dosis", "Dosis", 100],
+                                            ["frecuencia", "Frecuencia", 100],
+                                            ["duracion", "Duración", 100],
+                                            ["indicaciones", "Indicaciones", 10000],
+                                          ] as const).map(([field, label, maxLength]) => (
+                                            <label key={field} className="text-xs font-medium text-brand-800">
+                                              {label}
+                                              <input
+                                                className="mt-1 w-full rounded border border-brand-200 px-2 py-1.5 text-sm"
+                                                value={detalle[field]}
+                                                maxLength={maxLength}
+                                                required={field === "medicamento"}
+                                                onChange={(event) => setDetallesReceta((actual) =>
+                                                  actual.map((item, itemIndex) => itemIndex === index
+                                                    ? { ...item, [field]: event.target.value }
+                                                    : item)
+                                                )}
+                                              />
+                                            </label>
+                                          ))}
+                                          {detallesReceta.length > 1 && (
+                                            <Button
+                                              type="button"
+                                              variante="ghost"
+                                              tamaño="sm"
+                                              onClick={() => setDetallesReceta((actual) => actual.filter((_, i) => i !== index))}
+                                            >
+                                              Quitar medicamento
+                                            </Button>
+                                          )}
+                                        </fieldset>
+                                      ))}
+                                      <div className="flex flex-wrap gap-2">
+                                        <Button
+                                          type="button"
+                                          variante="secondary"
+                                          tamaño="sm"
+                                          onClick={() => setDetallesReceta((actual) => [...actual, {
+                                            medicamento: "", dosis: "", frecuencia: "", duracion: "", indicaciones: "",
+                                          }])}
+                                        >
+                                          Agregar medicamento
+                                        </Button>
+                                        <Button type="submit" tamaño="sm" cargando={guardandoReceta}>
+                                          Guardar receta
+                                        </Button>
+                                      </div>
+                                    </form>
+                                  )}
+                                </div>
+                              ) : (
+                                <p className="mt-2 text-sm text-gray-500">Sin consulta registrada.</p>
+                              )}
+                            </article>
+                          ))}
+                        </div>
+                      ) : null}
+                    </section>
+                  )}
                 </div>
               )}
             </div>
@@ -232,11 +413,6 @@ export function MisPacientesPage() {
         </div>
       ))}
 
-      {toast && (
-        <div className="fixed bottom-6 right-6 z-50 max-w-sm">
-          <ToastDemo mensaje={toast} tipo="info" onCerrar={() => setToast(null)} />
-        </div>
-      )}
     </div>
   );
 }

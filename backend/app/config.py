@@ -57,6 +57,7 @@ class Config:
     # Nunca se acepta una clínica enviada por el cliente.
     RECEPTION_CLINIC_ID: int = 1
     CITA_DURACION_MINUTOS: int = 60
+    APP_TIMEZONE: str = os.environ.get("APP_TIMEZONE", "America/Mexico_City")
 
     # ── JWT ───────────────────────────────────────────────────────────────────
     # JWT_SECRET_KEY se lee directamente en utils/security.py desde os.environ
@@ -72,6 +73,13 @@ class ProductionConfig(Config):
     """Configuración de producción."""
     DEBUG = False
     LOG_LEVEL = logging.WARNING
+    SECRET_KEY = _require_env("SECRET_KEY") if os.environ.get("FLASK_ENV") == "production" else Config.SECRET_KEY
+    CORS_ORIGINS = [origin.strip() for origin in os.environ.get("CORS_ORIGINS", "").split(",") if origin.strip()]
+    RECEPTION_CLINIC_ID = int(os.environ.get("RECEPTION_CLINIC_ID", "0"))
+    SESSION_COOKIE_SECURE = True
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Strict"
+    PREFERRED_URL_SCHEME = "https"
     SQLALCHEMY_DATABASE_URI: str = (
         _require_env("DATABASE_URL")
         if os.environ.get("FLASK_ENV") == "production"

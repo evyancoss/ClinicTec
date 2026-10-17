@@ -4,6 +4,7 @@
  */
 
 import { api } from "./api";
+import type { ConsultaAPI } from "./consultasService";
 
 export interface PacienteAPI {
   id_paciente:      number;
@@ -29,6 +30,20 @@ export interface PaginacionAPI {
 export interface ListaPacientesResponse {
   pacientes:  PacienteAPI[];
   paginacion: PaginacionAPI;
+}
+
+export interface CitaHistorialAPI {
+  id_cita: number;
+  fecha: string;
+  hora: string;
+  estado: string;
+  motivo: string | null;
+  consulta: ConsultaAPI | null;
+}
+
+export interface HistorialPacienteAPI {
+  paciente: PacienteAPI;
+  citas: CitaHistorialAPI[];
 }
 
 export interface NuevoPaciente {
@@ -59,7 +74,5 @@ export const pacientesService = {
     api.put<PacienteAPI>(`/api/pacientes/${id}`, datos),
 
   historial: (id: number) =>
-    api.get<{ paciente: PacienteAPI; citas: unknown[]; nota: string }>(
-      `/api/pacientes/${id}/historial`
-    ),
+    api.get<HistorialPacienteAPI>(`/api/pacientes/${id}/historial`),
 };

@@ -15,6 +15,7 @@ vi.mock("../../lib/citasService", () => ({
     obtener: vi.fn(),
     cancelar: vi.fn(),
     crear: vi.fn(),
+    reprogramar: vi.fn(),
   },
 }));
 
@@ -97,6 +98,7 @@ describe("AgendaPage de recepción", () => {
     vi.mocked(citasService.listar).mockReset();
     vi.mocked(citasService.cancelar).mockReset();
     vi.mocked(citasService.crear).mockReset();
+    vi.mocked(citasService.reprogramar).mockReset();
     vi.mocked(medicosService.listar).mockReset();
     vi.mocked(pacientesService.listar).mockReset();
   });
@@ -233,7 +235,10 @@ describe("AgendaPage de recepción", () => {
     }));
 
     expect(await screen.findByText("La cita se canceló correctamente.")).toBeTruthy();
-    expect(screen.getByRole("row", { name: /Paciente API/ }).textContent).toContain("Cancelada");
+    await waitFor(() => {
+      expect(screen.getByRole("row", { name: /Paciente API/ }).textContent)
+        .toContain("Cancelada");
+    });
     expect(citasService.cancelar).toHaveBeenCalledWith(cita.id_cita);
     await waitFor(() => expect(citasService.listar).toHaveBeenCalledTimes(2));
   });
@@ -260,11 +265,16 @@ describe("AgendaPage de recepción", () => {
 
   it("mantiene deshabilitada la cancelación en modo demo", async () => {
     renderAgenda(true);
+    const reagendar = await screen.findByRole("button", {
+      name: "Reagendar cita: Roberto Hernández",
+    });
     const cancelar = await screen.findByRole("button", {
       name: "Cancelar cita: Roberto Hernández",
     });
     expect(cancelar.hasAttribute("disabled")).toBe(true);
+    expect(reagendar.hasAttribute("disabled")).toBe(true);
     expect(citasService.cancelar).not.toHaveBeenCalled();
+    expect(citasService.reprogramar).not.toHaveBeenCalled();
   });
 
   it("crea citas solo en modo real y recarga la fecha guardada", async () => {
@@ -394,5 +404,84 @@ describe("AgendaPage de recepción", () => {
     expect(citasService.crear).not.toHaveBeenCalled();
     expect(pacientesService.listar).not.toHaveBeenCalled();
     expect(medicosService.listar).not.toHaveBeenCalled();
+  });
+
+  it("reprograma una cita Agendada por API y recarga la agenda", async () => {
+    const reprogramada = {
+      ...cita,
+      fecha: "2026-10-20",
+      hora: "11:45",
+    };
+    vi.mocked(citasService.listar)
+      .mockResolvedValueOnce(respuesta([cita]))
+      .mockResolvedValueOnce(respuesta([reprogramada]));
+    vi.mocked(citasService.reprogramar).mockResolvedValue({
+      data: reprogramada,
+      error: null,
+      status: 200,
+    });
+    renderAgenda();
+
+    fireEvent.click(await screen.findByRole("button", {
+      name: "Reagendar cita: Paciente API",
+    }));
+    expect(screen.getByText(/No quedará guardado el horario anterior/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Nueva fecha"), {
+      target: { value: "2026-10-20" },
+    });
+    fireEvent.change(screen.getByLabelText("Nueva hora"), {
+      target: { value: "11:45" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar horario" }));
+
+    expect(await screen.findByText(/La cita se reprogramó correctamente/)).toBeTruthy();
+    expect(citasService.reprogramar).toHaveBeenCalledWith(20, {
+      fecha: "2026-10-20",
+      hora: "11:45",
+    });
+    const filaReprogramada = await screen.findByRole("row", { name: /Paciente API/ });
+    expect(filaReprogramada.textContent).toContain("2026-10-20");
+    await waitFor(() => expect(citasService.listar).toHaveBeenCalledTimes(2));
+  });
+
+  it("muestra el error real de conflicto y mantiene el formulario abierto", async () => {
+    vi.mocked(citasService.listar).mockResolvedValue(respuesta([cita]));
+    vi.mocked(citasService.reprogramar).mockResolvedValue({
+      data: null,
+      error: "El médico ya tiene una cita que se empalma con ese horario.",
+      status: 409,
+    });
+    renderAgenda();
+
+    fireEvent.click(await screen.findByRole("button", {
+      name: "Reagendar cita: Paciente API",
+    }));
+    fireEvent.change(screen.getByLabelText("Nueva fecha"), {
+      target: { value: "2026-10-20" },
+    });
+    fireEvent.change(screen.getByLabelText("Nueva hora"), {
+      target: { value: "11:45" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar horario" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "se empalma con ese horario",
+    );
+    expect(screen.getByRole("button", { name: "Guardar horario" })).toBeTruthy();
+    expect(screen.queryByText(/La cita se reprogramó correctamente/)).toBeNull();
+    expect(citasService.listar).toHaveBeenCalledTimes(1);
+  });
+
+  it("no expone la acción para citas con estado distinto de Agendada", async () => {
+    vi.mocked(citasService.listar).mockResolvedValue(respuesta([{
+      ...cita,
+      estado: "Atendida",
+    }]));
+    renderAgenda(false);
+    expect(await screen.findByText("Paciente API")).toBeTruthy();
+    expect(screen.queryByRole("button", {
+      name: "Reagendar cita: Paciente API",
+    })).toBeNull();
+    expect(citasService.reprogramar).not.toHaveBeenCalled();
   });
 });

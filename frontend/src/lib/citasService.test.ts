@@ -69,6 +69,22 @@ describe("citasService", () => {
 
     await citasService.crear(datos);
 
-    expect(api.post).toHaveBeenCalledWith("/api/citas/", datos);
+    expect(api.post).toHaveBeenCalledWith("/api/citas", datos);
+  });
+
+  it("reprograma la cita existente enviando solo fecha y hora", async () => {
+    const datos = { fecha: "2026-10-20", hora: "11:30" };
+    vi.mocked(api.post).mockResolvedValue({
+      data: null,
+      error: null,
+      status: 200,
+    });
+
+    await citasService.reprogramar(42, datos);
+
+    expect(api.post).toHaveBeenCalledWith(
+      "/api/citas/42/reprogramar",
+      datos,
+    );
   });
 });

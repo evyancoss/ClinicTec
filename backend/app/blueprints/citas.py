@@ -200,6 +200,7 @@ def obtener_cita(id_cita: int):
 
 
 @citas_bp.post("")
+@citas_bp.post("/")
 @citas_bp.post("crear")
 @requiere_autenticacion
 @requiere_rol("recepcion")
@@ -299,6 +300,87 @@ def crear_cita():
     return ok(_serializar_cita(cita), 201)
 
 
+@citas_bp.post("/<int:id_cita>/reprogramar")
+@requiere_autenticacion
+@requiere_rol("recepcion")
+def reprogramar_cita(id_cita: int):
+    """Actualiza fecha y hora de una cita agendada sin crear otro registro."""
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict) or not body:
+        return err("Se requiere un cuerpo JSON.", 400)
+    if set(body) != {"fecha", "hora"}:
+        return err("Solo se pueden enviar fecha y hora.", 422)
+
+    fecha = _parsear_fecha(body.get("fecha"))
+    hora = _parsear_hora(body.get("hora"))
+    if fecha is None:
+        return err("Fecha inválida. Use el formato AAAA-MM-DD.", 422)
+    if hora is None:
+        return err("Hora inválida. Use el formato HH:MM.", 422)
+
+    id_clinica, _, error_acceso = _alcance_usuario()
+    if error_acceso:
+        return error_acceso
+
+    cita = db.session.execute(
+        _consulta_en_alcance(id_clinica, None).where(Cita.id_cita == id_cita)
+    ).scalar_one_or_none()
+    if cita is None:
+        return err("Cita no encontrada.", 404)
+    if cita.estado != "Agendada":
+        return err("Solo se pueden reprogramar citas con estado Agendada.", 409)
+
+    inicio = datetime.combine(fecha, hora)
+    fin = inicio + timedelta(minutes=current_app.config["CITA_DURACION_MINUTOS"])
+
+    try:
+        medico = db.session.execute(
+            db.select(Medico)
+            .where(Medico.id_medico == cita.id_medico)
+            .with_for_update()
+        ).scalar_one_or_none()
+        if medico is None or medico.estado is not True:
+            db.session.rollback()
+            return err("Cita no encontrada.", 404)
+        if medico.id_clinica != id_clinica:
+            db.session.rollback()
+            return err("Cita no encontrada.", 404)
+
+        cita = db.session.execute(
+            _consulta_en_alcance(id_clinica, None)
+            .where(Cita.id_cita == id_cita)
+            .with_for_update(of=Cita)
+            .execution_options(populate_existing=True)
+        ).scalar_one_or_none()
+        if cita is None:
+            db.session.rollback()
+            return err("Cita no encontrada.", 404)
+        if cita.estado != "Agendada":
+            db.session.rollback()
+            return err("Solo se pueden reprogramar citas con estado Agendada.", 409)
+        if _hay_empalme(
+            cita.id_medico,
+            inicio,
+            fin,
+            excluir_id_cita=cita.id_cita,
+        ):
+            db.session.rollback()
+            return err("El médico ya tiene una cita que se empalma con ese horario.", 409)
+
+        cita.fecha = fecha
+        cita.hora = hora
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return err("No se pudo reprogramar la cita por un conflicto de integridad.", 409)
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.error("Error al reprogramar cita: %s", type(exc).__name__)
+        return err("No se pudo reprogramar la cita.", 500)
+
+    return ok(_serializar_cita(cita))
+
+
 @citas_bp.post("/<int:id_cita>/cancelar")
 @requiere_autenticacion
 @requiere_rol("recepcion")
@@ -332,6 +414,7 @@ def cancelar_cita(id_cita: int):
             _consulta_en_alcance(id_clinica, None)
             .where(Cita.id_cita == id_cita)
             .with_for_update(of=Cita)
+            .execution_options(populate_existing=True)
         ).scalar_one_or_none()
         if cita is None:
             db.session.rollback()

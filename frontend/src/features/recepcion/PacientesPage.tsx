@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Search, UserPlus, Eye, Edit, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, UserPlus, Edit, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { Card, CardHeader } from "../../components/ui/Card";
@@ -252,12 +252,6 @@ export function PacientesPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
-                        <Button
-                          variante="ghost" tamaño="sm"
-                          icono={<Eye size={14} />}
-                          onClick={() => mostrarToast("Historial disponible en Fase 7.", "info")}
-                          aria-label={`Ver historial: ${p.nombre}`}
-                        />
                         <Button
                           variante="ghost" tamaño="sm"
                           icono={<Edit size={14} />}

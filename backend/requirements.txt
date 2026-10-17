@@ -3,6 +3,7 @@ Flask==3.1.1
 Flask-SQLAlchemy==3.1.1
 Flask-Migrate==4.1.0
 Flask-CORS==5.0.1
+gunicorn==26.2.0
 
 # ─── Base de datos ────────────────────────────────────────────────────────────
 SQLAlchemy==2.0.41

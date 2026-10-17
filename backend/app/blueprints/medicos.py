@@ -17,7 +17,7 @@ Seguridad:
 """
 
 import logging
-from flask import Blueprint, g
+from flask import Blueprint, current_app, g
 from sqlalchemy.orm import joinedload
 
 from ..extensions import db
@@ -61,12 +61,18 @@ def listar_medicos():
     Lista médicos activos con nombre, especialidad, clínica y contacto.
     Solo para recepción y administrador (para asignar citas o gestionar).
     """
-    medicos = db.session.execute(
+    consulta = (
         db.select(Medico)
         .options(joinedload(Medico.clinica))
         .where(Medico.estado.is_(True))
         .order_by(Medico.ape_paterno, Medico.nombre)
-    ).scalars().all()
+    )
+    if g.usuario_actual.rol == "recepcion":
+        clinic_id = current_app.config.get("RECEPTION_CLINIC_ID")
+        if isinstance(clinic_id, bool) or not isinstance(clinic_id, int) or clinic_id < 1:
+            return err("La clínica de recepción no está configurada en el servidor.", 503)
+        consulta = consulta.where(Medico.id_clinica == clinic_id)
+    medicos = db.session.execute(consulta).scalars().all()
 
     return ok([_perfil_publico(m) for m in medicos])
 

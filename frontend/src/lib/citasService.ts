@@ -14,6 +14,11 @@ export interface NuevaCita {
   motivo?: string;
 }
 
+export interface ReprogramacionCita {
+  fecha: string;
+  hora: string;
+}
+
 export const citasService = {
   listar: (fecha: string, pagina = 1, porPagina = 20) => {
     const parametros = new URLSearchParams({
@@ -32,4 +37,7 @@ export const citasService = {
 
   crear: (datos: NuevaCita) =>
     api.post<Cita>("/api/citas", datos),
+
+  reprogramar: (idCita: number, datos: ReprogramacionCita) =>
+    api.post<Cita>(`/api/citas/${idCita}/reprogramar`, datos),
 };

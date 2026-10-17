@@ -142,11 +142,50 @@ En caso de error:
 - `GET /api/citas?fecha=AAAA-MM-DD` devuelve citas paginadas dentro del alcance autorizado: recepción se limita al `RECEPTION_CLINIC_ID` configurado en el servidor, y un médico a su propio perfil y clínica.
 - `GET /api/citas/<id>` aplica el mismo alcance; no se acepta un `id_medico` del cliente para ampliar permisos.
 - `POST /api/citas/` permite a recepción registrar una cita de 60 minutos. La clínica operativa se obtiene de la configuración del servidor (clínica 1 en esta instalación); se rechazan campos de clínica y estado enviados por el cliente.
+- `POST /api/citas/<id>/reprogramar` permite a recepción actualizar fecha y hora de la misma cita `Agendada`, dentro de la clínica configurada. Acepta únicamente `fecha` y `hora`, conserva paciente, médico, clínica, estado y motivo, y no guarda la fecha/hora sustituida en un historial.
 - `POST /api/citas/<id>/cancelar` permite a recepción cancelar una cita `Agendada` solo dentro de la clínica configurada en el servidor. No acepta un identificador de clínica del cliente, conserva los demás datos y no registra motivo de cancelación.
 - La tabla actual no almacena duración. La API aplica `CITA_DURACION_MINUTOS = 60` a citas nuevas e interpreta también las existentes como 60 minutos para detectar empalmes; no persiste una duración por cita.
 - La creación bloquea la fila del médico con `SELECT ... FOR UPDATE` y valida empalmes en la transacción. `Agendada` y `Atendida` bloquean el horario; `Cancelada` y `Reagendada` no. La intersección es semiabierta, por lo que citas consecutivas se permiten; se contemplan cruces de medianoche.
-- La reprogramación sigue pendiente: el esquema no registra una relación entre la cita anterior y su reemplazo. SQLite en memoria valida reglas funcionales, no el bloqueo concurrente real de PostgreSQL; esa garantía debe probarse en un PostgreSQL aislado.
+- La reprogramación conserva el ID de cita y cambia su fecha/hora en el mismo registro; la fecha y hora anteriores se sobrescriben y no pueden consultarse después como historial. No requiere cambios de esquema. La operación toma el bloqueo de la fila del médico y la cita, valida empalmes excluyendo la propia cita y confirma la actualización en una transacción.
+- SQLite en memoria valida las reglas funcionales, pero no demuestra el bloqueo concurrente real de PostgreSQL. En esta revisión no hay servidor disponible en `localhost:5432` o `localhost:5433`, ni están instalados/disponibles `psql`, `pg_ctl`, `initdb`, Docker o Podman; no se intentó usar Supabase.
+- Validación de concurrencia pendiente: disponer de un PostgreSQL local o efímero aislado y ejecutar una prueba de integración con dos conexiones/sesiones independientes. En una base descartable, cargar solo clínica/médico/paciente sintéticos, iniciar simultáneamente dos solicitudes para crear la misma franja del mismo médico y comprobar que una confirme, la otra responda `409` y solo quede una cita bloqueante. También probar dos registros de consulta simultáneos para la misma cita `Agendada`; debe confirmarse uno y el segundo recibir `409`, con una sola consulta y la cita en `Atendida`. La prueba debe levantar un contexto Flask por worker, usar una barrera para iniciar ambas solicitudes a la vez y consultar el resultado desde una tercera sesión. La instalación actual fuerza SQLite en memoria mediante `TestingConfig`, por lo que un test PostgreSQL requerirá configuración de integración explícita y una URL de base exclusivamente descartable; nunca usar Supabase compartido. SQLite no sustituye esta comprobación.
 - La BD reportada no impone CHECK para los estados; la API debe validar `Agendada`, `Atendida`, `Cancelada` y `Reagendada`, y la interfaz traducirlos para presentación.
+
+### 3.5 Consultas, historial y recetas
+
+- `POST /api/citas/<id_cita>/consulta` requiere JWT con rol `medicos` y perfil
+  médico activo. El perfil se obtiene de la identidad autenticada; solo se
+  permite atender una cita `Agendada` asignada a ese médico y a su clínica.
+- La ruta acepta solo `motivo`, `diagnostico`, `observaciones` y `tratamiento`.
+  Todas estas columnas son `TEXT` nullable en el esquema real; ningún campo
+  individual es obligatorio, pero se exige al menos uno no vacío. Se validan
+  como texto y tienen límite de entrada de 10 000 caracteres. `exploracion` no
+  existe y se rechaza.
+- La API bloquea primero la fila del médico y después la cita, siguiendo el
+  orden de bloqueo del flujo de agenda. La creación de la consulta y el cambio
+  de la cita a `Atendida` ocurren en una transacción; cualquier error, incluido
+  el commit, provoca rollback. SQLite verifica el resultado funcional, pero no
+  valida la semántica concurrente de PostgreSQL.
+- `GET /api/pacientes/<id>/historial` es el endpoint existente ampliado. Solo
+  responde al médico con citas de ese paciente asignadas a su perfil y clínica.
+  Paciente inexistente y paciente fuera de alcance devuelven el mismo `404`.
+  Administrador y recepción reciben `403` sin datos clínicos. Se exponen solo
+  datos básicos del paciente, citas autorizadas, consultas, recetas y detalles;
+  nunca hashes ni tokens.
+- `POST /api/consultas/<id_consulta>/recetas` permite al médico asignado emitir
+  receta. No recibe identidades de cita, médico o consulta en el cuerpo. Exige
+  uno o más detalles porque `medicamento` es obligatorio; receta y detalles se
+  confirman juntos o se revierten juntos.
+- El esquema no impone unicidad de recetas por consulta, por lo que se pueden
+  emitir varias. Los endpoints actuales no permiten editar ni eliminar
+  recetas. No se incorporan campos, tablas ni restricciones al esquema.
+- La agenda médica inicia consultas solo desde citas `Agendada`. El historial
+  permite revisar el contenido guardado y emitir recetas; el modo demo no llama
+  a estos endpoints y no simula persistencia.
+- La escritura concurrente y los bloqueos de estas operaciones todavía no se
+  han ejecutado contra PostgreSQL. En la revisión no se encontraron cliente,
+  herramientas de inicialización/contenedor ni servicio local en los puertos
+  habituales; no se instaló ni levantó infraestructura.
 
 ---
 

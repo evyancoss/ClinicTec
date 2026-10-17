@@ -1,4 +1,4 @@
-import { CheckCircle2, RefreshCw, XCircle, Info } from "lucide-react";
+import { CheckCircle2, ClipboardList, RefreshCw, XCircle, Info } from "lucide-react";
 import type { Cita } from "../../types";
 import { BadgeEstado } from "../ui/Badge";
 import { Button } from "../ui/Button";
@@ -7,15 +7,23 @@ import { EstadoVacio } from "../ui/EstadoVacio";
 interface TablaCitasProps {
   citas: Cita[];
   modoRecepcion?: boolean;
+  modoMedico?: boolean;
+  onRegistrarConsulta?: (cita: Cita) => void;
   onCancelarCita?: (cita: Cita) => void;
+  onReprogramarCita?: (cita: Cita) => void;
   cancelandoId?: number | null;
+  reprogramandoId?: number | null;
 }
 
 export function TablaCitas({
   citas,
   modoRecepcion = false,
+  modoMedico = false,
+  onRegistrarConsulta,
   onCancelarCita,
+  onReprogramarCita,
   cancelandoId = null,
+  reprogramandoId = null,
 }: TablaCitasProps) {
   return (
     <div className="relative">
@@ -39,8 +47,8 @@ export function TablaCitas({
                 Motivo
               </th>
               <th className="text-left px-4 py-3 font-semibold">Estado</th>
-              {modoRecepcion && (
-                <th className="text-left px-4 py-3 font-semibold hidden sm:table-cell">
+              {(modoRecepcion || modoMedico) && (
+                <th className={`text-left px-4 py-3 font-semibold ${modoMedico ? "" : "hidden sm:table-cell"}`}>
                   Acciones
                 </th>
               )}
@@ -70,10 +78,21 @@ export function TablaCitas({
                 <td className="px-4 py-3">
                   <BadgeEstado estado={cita.estado} />
                 </td>
-                {modoRecepcion && (
-                  <td className="px-4 py-3 hidden sm:table-cell">
+                {(modoRecepcion || modoMedico) && (
+                  <td className={`px-4 py-3 ${modoMedico ? "" : "hidden sm:table-cell"}`}>
                     <div className="flex items-center gap-1.5">
-                      {cita.estado === "Agendada" && (
+                      {modoMedico && cita.estado === "Agendada" && (
+                        <Button
+                          variante="ghost"
+                          tamaño="sm"
+                          disabled={!onRegistrarConsulta}
+                          icono={<ClipboardList size={14} />}
+                          title="Registrar consulta"
+                          aria-label={`Registrar consulta: ${cita.nombre_paciente}`}
+                          onClick={() => onRegistrarConsulta?.(cita)}
+                        />
+                      )}
+                      {modoRecepcion && cita.estado === "Agendada" && (
                         <>
                           <Button
                             variante="ghost"
@@ -86,10 +105,11 @@ export function TablaCitas({
                           <Button
                             variante="ghost"
                             tamaño="sm"
-                            disabled
+                            disabled={!onReprogramarCita || reprogramandoId === cita.id_cita}
                             icono={<RefreshCw size={14} />}
                             title="Reagendar"
                             aria-label={`Reagendar cita: ${cita.nombre_paciente}`}
+                            onClick={() => onReprogramarCita?.(cita)}
                           />
                           <Button
                             variante="ghost"
@@ -115,8 +135,9 @@ export function TablaCitas({
         <div className="flex items-start gap-2 px-3 py-2 text-xs text-gray-500">
           <Info size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
           <span>
-            Cancelar una cita agendada está disponible en sesión real. Alta,
-            reprogramación y cambio a atendida siguen pendientes.
+            Reprogramar o cancelar una cita agendada está disponible en sesión real.
+            La reprogramación actualiza esta misma cita; su horario anterior no queda
+            guardado. Alta y cambio a atendida siguen pendientes.
           </span>
         </div>
       )}

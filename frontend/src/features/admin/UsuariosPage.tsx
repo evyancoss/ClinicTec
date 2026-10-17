@@ -1,11 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Edit, ToggleRight, UserPlus } from "lucide-react";
+import { Edit, UserPlus } from "lucide-react";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Card, CardHeader } from "../../components/ui/Card";
 import { Modal } from "../../components/ui/Modal";
-import { ToastDemo } from "../../components/ui/ToastDemo";
-import { useDemo } from "../../store/demo-context";
 import {
   usuariosService,
   type AltaUsuario,
@@ -57,68 +55,7 @@ const VARIANTES_ROL: Record<RolCuenta, "default" | "info" | "success"> = {
 const CAMPO =
   "w-full rounded-md border border-brand-200 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500";
 
-const USUARIOS_FICTICIOS: UsuarioSistema[] = [
-  {
-    id_usuario: 1,
-    nombre: "Ana",
-    ape_paterno: "García",
-    ape_materno: "",
-    usuario: "ana@clinictec.demo",
-    rol: "administrador",
-    medico: null,
-  },
-  {
-    id_usuario: 2,
-    nombre: "Carlos",
-    ape_paterno: "Méndez",
-    ape_materno: "",
-    usuario: "carlos@clinictec.demo",
-    rol: "recepcion",
-    medico: null,
-  },
-  {
-    id_usuario: 3,
-    nombre: "Laura",
-    ape_paterno: "Vega",
-    ape_materno: "",
-    usuario: "laura@clinictec.demo",
-    rol: "medicos",
-    medico: {
-      id_clinica: 2,
-      nombre_clinica: "ClinicTec Norte",
-      especialidad: "Medicina general",
-      correo: null,
-      estado: true,
-    },
-  },
-  {
-    id_usuario: 4,
-    nombre: "Marcos",
-    ape_paterno: "Torres",
-    ape_materno: "",
-    usuario: "marcos@clinictec.demo",
-    rol: "medicos",
-    medico: {
-      id_clinica: 1,
-      nombre_clinica: "ClinicTec Central",
-      especialidad: "Medicina general",
-      correo: null,
-      estado: true,
-    },
-  },
-  {
-    id_usuario: 5,
-    nombre: "Beatriz",
-    ape_paterno: "Soto",
-    ape_materno: "",
-    usuario: "beatriz@clinictec.demo",
-    rol: "recepcion",
-    medico: null,
-  },
-];
-
 export function UsuariosPage() {
-  const { modoDemo } = useDemo();
   const [usuarios, setUsuarios] = useState<UsuarioSistema[]>([]);
   const [clinicas, setClinicas] = useState<ClinicaOpcion[]>([]);
   const [cargando, setCargando] = useState(true);
@@ -136,16 +73,9 @@ export function UsuariosPage() {
   const [confirmacion, setConfirmacion] = useState<string | null>(null);
   const [borrador, setBorrador] = useState(BORRADOR_VACIO);
   const [recarga, setRecarga] = useState(0);
-  const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
     let vigente = true;
-    if (modoDemo) {
-      return () => {
-        vigente = false;
-      };
-    }
-
     Promise.all([
       usuariosService.listar(),
       usuariosService.listarClinicas(),
@@ -171,22 +101,12 @@ export function UsuariosPage() {
     return () => {
       vigente = false;
     };
-  }, [modoDemo, recarga]);
+  }, [recarga]);
 
-  const usuariosMostrados = modoDemo ? USUARIOS_FICTICIOS : usuarios;
-  const cargandoActual = !modoDemo && cargando;
-  const errorActual = modoDemo ? null : errorCarga;
-
-  function mostrarToast(mensaje: string) {
-    setToast(mensaje);
-    window.setTimeout(() => setToast(null), 3500);
-  }
+  const cargandoActual = cargando;
+  const errorActual = errorCarga;
 
   function abrirFormulario() {
-    if (modoDemo) {
-      mostrarToast("DEMO: El registro de usuarios no modifica datos reales.");
-      return;
-    }
     setBorrador(BORRADOR_VACIO);
     setErrorFormulario(null);
     setConfirmacion(null);
@@ -194,10 +114,6 @@ export function UsuariosPage() {
   }
 
   function abrirEdicion(usuario: UsuarioSistema) {
-    if (modoDemo) {
-      mostrarToast("DEMO: La edición de usuarios es solo una demostración.");
-      return;
-    }
     setUsuarioEditando(usuario);
     setBorradorEdicion({
       nombre: usuario.nombre,
@@ -267,7 +183,7 @@ export function UsuariosPage() {
 
   async function guardarEdicion(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
-    if (!usuarioEditando || modoDemo) return;
+    if (!usuarioEditando) return;
     setErrorFormulario(null);
     setGuardando(true);
 
@@ -305,7 +221,7 @@ export function UsuariosPage() {
           <p className="mt-0.5 text-sm text-gray-500">
             {cargandoActual
               ? "Cargando usuarios…"
-              : `${usuariosMostrados.length} usuarios ${modoDemo ? "ficticios de demostración" : "registrados"}`}
+              : `${usuarios.length} usuarios registrados`}
           </p>
         </div>
         <Button
@@ -317,15 +233,9 @@ export function UsuariosPage() {
         </Button>
       </div>
 
-      {modoDemo ? (
-        <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          Modo demostración: esta lista y sus acciones son ficticias; no se consultan ni modifican cuentas reales.
-        </p>
-      ) : (
-        <p className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
-          Se pueden editar nombre y apellidos; en cuentas médicas también se actualizan coordinadamente en el perfil profesional. El nombre de usuario, el rol y la contraseña no se modifican aquí.
-        </p>
-      )}
+      <p className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+        Se pueden editar nombre y apellidos; en cuentas médicas también se actualizan coordinadamente en el perfil profesional. El nombre de usuario, el rol y la contraseña no se modifican aquí.
+      </p>
 
       {confirmacion && (
         <p role="status" className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800">
@@ -366,10 +276,10 @@ export function UsuariosPage() {
               {cargandoActual && (
                 <tr><td className="px-4 py-8 text-center text-gray-500" colSpan={5}>Cargando usuarios…</td></tr>
               )}
-              {!cargandoActual && !errorActual && usuariosMostrados.length === 0 && (
+              {!cargandoActual && !errorActual && usuarios.length === 0 && (
                 <tr><td className="px-4 py-8 text-center text-gray-500" colSpan={5}>No hay usuarios registrados.</td></tr>
               )}
-              {!cargandoActual && usuariosMostrados.map((usuario, index) => (
+              {!cargandoActual && usuarios.map((usuario, index) => (
                 <tr
                   key={usuario.id_usuario}
                   className={`border-t border-brand-200 transition-colors hover:bg-brand-100 ${index % 2 === 0 ? "bg-white" : "bg-brand-50"}`}
@@ -389,33 +299,14 @@ export function UsuariosPage() {
                       : "—"}
                   </td>
                   <td className="px-4 py-3">
-                    {modoDemo ? (
-                      <div className="flex gap-1">
-                        <Button
-                          variante="ghost"
-                          tamaño="sm"
-                          icono={<Edit size={14} />}
-                          aria-label={`Editar ${usuario.nombre}`}
-                          onClick={() => mostrarToast("DEMO: La edición de usuarios es solo una demostración.")}
-                        />
-                        <Button
-                          variante="ghost"
-                          tamaño="sm"
-                          icono={<ToggleRight size={16} />}
-                          aria-label={`Cambiar estado de ${usuario.nombre}`}
-                          onClick={() => mostrarToast("DEMO: El estado ficticio no se modifica.")}
-                        />
-                      </div>
-                    ) : (
-                      <Button
-                        variante="ghost"
-                        tamaño="sm"
-                        icono={<Edit size={14} />}
-                        aria-label={`Editar ${usuario.nombre}`}
-                        title="Editar nombre y apellidos"
-                        onClick={() => abrirEdicion(usuario)}
-                      />
-                    )}
+                    <Button
+                      variante="ghost"
+                      tamaño="sm"
+                      icono={<Edit size={14} />}
+                      aria-label={`Editar ${usuario.nombre}`}
+                      title="Editar nombre y apellidos"
+                      onClick={() => abrirEdicion(usuario)}
+                    />
                   </td>
                 </tr>
               ))}
@@ -567,11 +458,6 @@ export function UsuariosPage() {
           </div>
         </form>
       </Modal>
-      {toast && (
-        <div className="fixed bottom-6 right-6 z-50 max-w-sm">
-          <ToastDemo mensaje={toast} tipo="info" onCerrar={() => setToast(null)} />
-        </div>
-      )}
     </div>
   );
 }

@@ -35,7 +35,7 @@ describe("TablaCitas", () => {
   it("mantiene deshabilitadas las acciones pendientes y explica su disponibilidad", () => {
     render(<TablaCitas citas={[citas[0]]} modoRecepcion />);
 
-    expect(screen.getByText(/Alta, reprogramación y cambio a atendida siguen pendientes/)).toBeTruthy();
+    expect(screen.getByText(/Alta y cambio a atendida siguen pendientes/)).toBeTruthy();
     for (const accion of [
       "Marcar como atendida: Paciente 1",
       "Reagendar cita: Paciente 1",
@@ -45,7 +45,7 @@ describe("TablaCitas", () => {
     }
   });
 
-  it("habilita cancelación solo cuando recibe el manejador real", () => {
+  it("habilita cancelación y reprogramación solo con sus manejadores reales", () => {
     render(<TablaCitas citas={[citas[0]]} modoRecepcion onCancelarCita={() => undefined} />);
 
     expect(
@@ -54,5 +54,39 @@ describe("TablaCitas", () => {
     expect(
       screen.getByRole("button", { name: "Reagendar cita: Paciente 1" }).hasAttribute("disabled"),
     ).toBe(true);
+  });
+
+  it("habilita reprogramación únicamente para citas agendadas con manejador real", () => {
+    render(
+      <TablaCitas
+        citas={[citas[0], citas[1]]}
+        modoRecepcion
+        onReprogramarCita={() => undefined}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Reagendar cita: Paciente 1" }).hasAttribute("disabled"),
+    ).toBe(false);
+    expect(screen.queryByRole("button", {
+      name: "Reagendar cita: Paciente 2",
+    })).toBeNull();
+  });
+
+  it("muestra acción médica solo para citas agendadas y con manejador", () => {
+    render(
+      <TablaCitas
+        citas={[citas[0], citas[1]]}
+        modoMedico
+        onRegistrarConsulta={() => undefined}
+      />,
+    );
+
+    expect(screen.getByRole("button", {
+      name: "Registrar consulta: Paciente 1",
+    }).hasAttribute("disabled")).toBe(false);
+    expect(screen.queryByRole("button", {
+      name: "Registrar consulta: Paciente 2",
+    })).toBeNull();
   });
 });

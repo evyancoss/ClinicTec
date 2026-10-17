@@ -22,11 +22,14 @@ import logging
 from datetime import date as _date
 from flask import Blueprint, g, request
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import selectinload
 
 from ..extensions import db
 from ..models.paciente import Paciente
 from ..models.cita import Cita
 from ..models.medico import Medico
+from ..models.consulta import Consulta
+from ..models.receta import Receta
 from ..schemas.responses import ok, error as err
 from ..utils.auth_decorators import (
     requiere_autenticacion,
@@ -329,39 +332,72 @@ def editar_paciente(id_paciente: int):
 @pacientes_bp.get("/<int:id_paciente>/historial")
 @requiere_autenticacion
 def historial_paciente(id_paciente: int):
-    """
-    Stub preparado para la Fase 7 (consultas y recetas).
-    Mantiene el control de acceso sin exponer citas ni datos clínicos antes de Fase 7.
-    El médico solo puede ver su propio historial de citas con ese paciente.
-    """
+    """Devuelve el historial clínico solo al médico con citas asignadas."""
     usuario = g.usuario_actual
-    if usuario.rol == "medicos":
-        medico = _medico_del_usuario(usuario.id_usuario)
-        if medico is None or not medico.estado:
-            return err("Perfil médico no encontrado o inactivo.", 403)
-        paciente = db.session.execute(
-            db.select(Paciente)
-            .join(Cita, Cita.id_paciente == Paciente.id_paciente)
-            .where(
-                Paciente.id_paciente == id_paciente,
-                Paciente.estado.is_(True),
-                Cita.id_medico == medico.id_medico,
-            )
-            .limit(1)
-        ).scalar_one_or_none()
-        if paciente is None:
-            return err("No tienes autorización para ver este paciente.", 403)
-    elif usuario.rol not in ("administrador", "recepcion"):
+    if usuario.rol != "medicos":
         return err("Acceso denegado.", 403)
-    else:
-        paciente = db.session.get(Paciente, id_paciente)
-        if not paciente or not paciente.estado:
-            return err("Paciente no encontrado.", 404)
+    medico = _medico_del_usuario(usuario.id_usuario)
+    if medico is None or not medico.estado:
+        return err("Perfil médico no encontrado o inactivo.", 403)
+
+    paciente = db.session.execute(
+        db.select(Paciente)
+        .join(Cita, Cita.id_paciente == Paciente.id_paciente)
+        .where(
+            Paciente.id_paciente == id_paciente,
+            Paciente.estado.is_(True),
+            Cita.id_medico == medico.id_medico,
+            Cita.id_clinica == medico.id_clinica,
+        )
+        .limit(1)
+    ).scalar_one_or_none()
+    if paciente is None:
+        # Inexistentes y ajenos tienen la misma respuesta para evitar enumeración.
+        return err("Paciente no encontrado.", 404)
+
+    citas = db.session.execute(
+        db.select(Cita)
+        .where(
+            Cita.id_paciente == id_paciente,
+            Cita.id_medico == medico.id_medico,
+            Cita.id_clinica == medico.id_clinica,
+        )
+        .options(
+            selectinload(Cita.consultas)
+            .selectinload(Consulta.recetas)
+            .selectinload(Receta.detalles)
+        )
+        .order_by(Cita.fecha.desc(), Cita.hora.desc(), Cita.id_cita.desc())
+    ).scalars().all()
+
+    historial = []
+    for cita in citas:
+        consulta = cita.consultas[0] if cita.consultas else None
+        historial.append({
+            "id_cita": cita.id_cita,
+            "fecha": cita.fecha.isoformat(),
+            "hora": cita.hora.isoformat(timespec="minutes"),
+            "estado": cita.estado,
+            "motivo": cita.motivo,
+            "consulta": (
+                {
+                    **consulta.to_dict(),
+                    "recetas": [
+                        {
+                            **receta.to_dict(),
+                            "detalles": [
+                                detalle.to_dict()
+                                for detalle in receta.detalles
+                            ],
+                        }
+                        for receta in consulta.recetas
+                    ],
+                }
+                if consulta else None
+            ),
+        })
 
     return ok({
-        "paciente": _serializar_paciente(
-            paciente, medico=usuario.rol == "medicos"
-        ),
-        "citas": [],
-        "nota": "El historial clínico se implementará en Fase 7.",
+        "paciente": _serializar_paciente(paciente, medico=True),
+        "citas": historial,
     })

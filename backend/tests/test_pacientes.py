@@ -430,12 +430,13 @@ class TestEditarPaciente:
 
 class TestHistorialPaciente:
 
-    def test_recepcion_accede_historial(self, client, token_recepcion, paciente_en_bd):
+    def test_recepcion_no_accede_a_datos_clinicos(
+        self, client, token_recepcion, paciente_en_bd
+    ):
         resp = client.get(f"/api/pacientes/{paciente_en_bd}/historial", headers={
             "Authorization": f"Bearer {token_recepcion}"
         })
-        assert resp.status_code == 200
-        assert "citas" in resp.get_json()["data"]
+        assert resp.status_code == 403
 
     def test_medico_con_cita_accede_historial(self, client, token_medico,
                                                paciente_en_bd, cita_medico_paciente):
@@ -444,8 +445,10 @@ class TestHistorialPaciente:
         })
         assert resp.status_code == 200
 
-    def test_paciente_inexistente_404(self, client, token_recepcion):
+    def test_recepcion_no_puede_consultar_historial_incluso_si_no_existe(
+        self, client, token_recepcion
+    ):
         resp = client.get("/api/pacientes/999999/historial", headers={
             "Authorization": f"Bearer {token_recepcion}"
         })
-        assert resp.status_code == 404
+        assert resp.status_code == 403

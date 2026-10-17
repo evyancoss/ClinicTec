@@ -1,14 +1,16 @@
+import { useState, type FormEvent } from "react";
 import { CalendarDays, Clock } from "lucide-react";
 import { TablaCitas } from "../../components/shared/TablaCitas";
 import { TarjetaResumen } from "../../components/shared/TarjetaResumen";
-import { BadgeEstado } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
-import { Card, CardHeader } from "../../components/ui/Card";
+import { Card } from "../../components/ui/Card";
 import { EstadoVacio } from "../../components/ui/EstadoVacio";
 import { Input } from "../../components/ui/Input";
+import { Modal } from "../../components/ui/Modal";
 import { useAgendaCitas } from "../../hooks/useAgendaCitas";
 import { useDemo } from "../../store/demo-context";
-import { PROXIMAS_CITAS_DEMO } from "../../utils/datosDemo";
+import type { Cita } from "../../types";
+import { consultasService } from "../../lib/consultasService";
 
 function etiquetaFecha(fecha: string): string {
   const [year, month, day] = fecha.split("-").map(Number);
@@ -21,13 +23,18 @@ function etiquetaFecha(fecha: string): string {
 }
 
 export function MiAgendaPage() {
-  const { modoDemo, usuarioActivo, usuarioAutenticado } = useDemo();
-  const nombreMedicoDemo = modoDemo ? usuarioActivo.nombre : undefined;
-  const nombreMedico = modoDemo
-    ? usuarioActivo.nombre
-    : usuarioAutenticado
-      ? `${usuarioAutenticado.nombre} ${usuarioAutenticado.ape_paterno} ${usuarioAutenticado.ape_materno}`
-      : "Médico";
+  const { usuarioAutenticado } = useDemo();
+  const [citaSeleccionada, setCitaSeleccionada] = useState<Cita | null>(null);
+  const [motivo, setMotivo] = useState("");
+  const [diagnostico, setDiagnostico] = useState("");
+  const [observaciones, setObservaciones] = useState("");
+  const [tratamiento, setTratamiento] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [errorConsulta, setErrorConsulta] = useState<string | null>(null);
+  const [consultaGuardada, setConsultaGuardada] = useState(false);
+  const nombreMedico = usuarioAutenticado
+    ? `${usuarioAutenticado.nombre} ${usuarioAutenticado.ape_paterno} ${usuarioAutenticado.ape_materno}`
+    : "Médico";
   const {
     citas,
     cargando,
@@ -36,9 +43,49 @@ export function MiAgendaPage() {
     fecha,
     pagina,
     paginas,
+    recargarCitas,
     setPagina,
     total,
-  } = useAgendaCitas(modoDemo, nombreMedicoDemo);
+  } = useAgendaCitas();
+
+  function iniciarConsulta(cita: Cita) {
+    setCitaSeleccionada(cita);
+    setMotivo("");
+    setDiagnostico("");
+    setObservaciones("");
+    setTratamiento("");
+    setErrorConsulta(null);
+    setConsultaGuardada(false);
+  }
+
+  function cerrarConsulta() {
+    if (guardando) return;
+    setCitaSeleccionada(null);
+  }
+
+  async function guardarConsulta(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!citaSeleccionada || consultaGuardada) return;
+    if (![motivo, diagnostico, observaciones, tratamiento].some((valor) => valor.trim())) {
+      setErrorConsulta("Registra al menos un dato clínico.");
+      return;
+    }
+    setGuardando(true);
+    setErrorConsulta(null);
+    const respuesta = await consultasService.registrar(citaSeleccionada.id_cita, {
+      motivo,
+      diagnostico,
+      observaciones,
+      tratamiento,
+    });
+    setGuardando(false);
+    if (respuesta.error || !respuesta.data) {
+      setErrorConsulta(respuesta.error ?? "No se pudo registrar la consulta.");
+      return;
+    }
+    setConsultaGuardada(true);
+    recargarCitas();
+  }
 
   const agendadas = citas.filter((cita) => cita.estado === "Agendada").length;
   const atendidas = citas.filter((cita) => cita.estado === "Atendida").length;
@@ -60,12 +107,6 @@ export function MiAgendaPage() {
           aria-label="Fecha de agenda"
         />
       </div>
-
-      {modoDemo && (
-        <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
-          Datos ficticios de demostración; no provienen de la API.
-        </p>
-      )}
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
         <TarjetaResumen
@@ -135,39 +176,59 @@ export function MiAgendaPage() {
               descripcion="No tienes citas para la fecha seleccionada."
             />
           ) : (
-            <TablaCitas citas={citas} />
+            <TablaCitas
+              citas={citas}
+              modoMedico
+              onRegistrarConsulta={iniciarConsulta}
+            />
           )}
         </div>
       </Card>
 
-      {modoDemo && (
-        <Card>
-          <CardHeader
-            titulo="Próximas citas (demo)"
-            subtitulo="Datos ficticios de los siguientes días"
-          />
-          <div className="space-y-3">
-            {PROXIMAS_CITAS_DEMO
-              .filter((cita) => cita.nombre_medico === nombreMedico)
-              .map((cita) => (
-                <div
-                  key={cita.id_cita}
-                  className="flex items-center justify-between gap-3 border-b border-brand-100 py-3 last:border-0"
-                >
-                  <div>
-                    <p className="text-sm font-medium text-gray-800">
-                      {cita.nombre_paciente}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {etiquetaFecha(cita.fecha)} · {cita.hora}
-                    </p>
-                  </div>
-                  <BadgeEstado estado={cita.estado} />
-                </div>
-              ))}
+      <Modal
+        abierto={citaSeleccionada !== null}
+        titulo={`Consulta · ${citaSeleccionada?.nombre_paciente ?? ""}`}
+        onCerrar={cerrarConsulta}
+      >
+        {consultaGuardada ? (
+          <div className="space-y-4">
+            <p className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800" role="status">
+              Consulta registrada correctamente. La cita ahora aparece como atendida.
+            </p>
+            <p className="text-sm text-gray-600">
+              Puedes emitir una receta desde el historial clínico del paciente.
+            </p>
+            <Button onClick={cerrarConsulta}>Cerrar</Button>
           </div>
-        </Card>
-      )}
+        ) : (
+          <form className="space-y-4" onSubmit={guardarConsulta}>
+            {errorConsulta && <p className="text-sm text-red-700" role="alert">{errorConsulta}</p>}
+            {([
+              ["Motivo", motivo, setMotivo],
+              ["Diagnóstico", diagnostico, setDiagnostico],
+              ["Observaciones", observaciones, setObservaciones],
+              ["Tratamiento", tratamiento, setTratamiento],
+            ] as const).map(([label, value, setter]) => (
+              <label key={label} className="block text-sm font-medium text-brand-800">
+                {label}
+                <textarea
+                  className="mt-1 min-h-20 w-full rounded-md border border-brand-200 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  value={value}
+                  onChange={(event) => setter(event.target.value)}
+                  maxLength={10000}
+                  disabled={guardando}
+                />
+              </label>
+            ))}
+            <div className="flex justify-end gap-2">
+              <Button variante="secondary" type="button" onClick={cerrarConsulta} disabled={guardando}>
+                Cancelar
+              </Button>
+              <Button type="submit" cargando={guardando}>Guardar consulta</Button>
+            </div>
+          </form>
+        )}
+      </Modal>
     </div>
   );
 }

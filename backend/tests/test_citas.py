@@ -190,12 +190,13 @@ def test_medico_solo_lista_sus_citas(
     assert data["citas"][0]["id_medico"] == cita_demo[2]
 
 
+@pytest.mark.parametrize("ruta", ["/api/citas", "/api/citas/"])
 def test_recepcion_crea_cita_con_clinica_operativa_y_sin_duracion_persistida(
-    app, client, token_recepcion, clinica_demo, cita_demo, monkeypatch
+    app, client, token_recepcion, clinica_demo, cita_demo, monkeypatch, ruta
 ):
     monkeypatch.setitem(app.config, "RECEPTION_CLINIC_ID", clinica_demo.id_clinica)
     response = client.post(
-        "/api/citas/",
+        ruta,
         json=_nueva_cita(
             id_paciente=cita_demo[1],
             id_medico=cita_demo[2],
@@ -515,6 +516,223 @@ def test_fallo_de_commit_no_persiste_nueva_cita(
         assert db.session.query(Cita).filter_by(
             fecha=date(2026, 10, 19), hora=time(9, 0)
         ).count() == 0
+
+
+def test_recepcion_reprograma_misma_cita_en_clinica_operativa(
+    app, client, token_recepcion, clinica_demo, cita_demo, monkeypatch
+):
+    monkeypatch.setitem(app.config, "RECEPTION_CLINIC_ID", clinica_demo.id_clinica)
+    response = client.post(
+        f"/api/citas/{cita_demo[0]}/reprogramar",
+        json={"fecha": "2026-10-19", "hora": "11:15"},
+        headers=_headers(token_recepcion),
+    )
+
+    assert response.status_code == 200
+    data = response.get_json()["data"]
+    assert data["id_cita"] == cita_demo[0]
+    assert data["fecha"] == "2026-10-19"
+    assert data["hora"] == "11:15"
+    with app.app_context():
+        cita = db.session.get(Cita, cita_demo[0])
+        assert cita.id_paciente == cita_demo[1]
+        assert cita.id_medico == cita_demo[2]
+        assert cita.id_clinica == clinica_demo.id_clinica
+        assert cita.estado == "Agendada"
+        assert cita.motivo == "Consulta de prueba"
+        assert db.session.query(Cita).count() == 1
+
+
+def test_reprogramar_excluye_la_propia_cita_y_permite_intervalo_consecutivo(
+    app, client, token_recepcion, clinica_demo, cita_demo, monkeypatch
+):
+    monkeypatch.setitem(app.config, "RECEPTION_CLINIC_ID", clinica_demo.id_clinica)
+    misma_hora = client.post(
+        f"/api/citas/{cita_demo[0]}/reprogramar",
+        json={"fecha": "2026-10-17", "hora": "09:30"},
+        headers=_headers(token_recepcion),
+    )
+    assert misma_hora.status_code == 200
+
+    with app.app_context():
+        consecutiva = Cita(
+            id_paciente=cita_demo[1],
+            id_medico=cita_demo[2],
+            id_clinica=clinica_demo.id_clinica,
+            fecha=date(2026, 10, 20),
+            hora=time(10, 30),
+            motivo="Otra cita",
+            estado="Agendada",
+        )
+        db.session.add(consecutiva)
+        db.session.commit()
+        id_consecutiva = consecutiva.id_cita
+
+    response = client.post(
+        f"/api/citas/{cita_demo[0]}/reprogramar",
+        json={"fecha": "2026-10-20", "hora": "11:30"},
+        headers=_headers(token_recepcion),
+    )
+    assert response.status_code == 200
+    assert response.get_json()["data"]["id_cita"] == cita_demo[0]
+    with app.app_context():
+        db.session.delete(db.session.get(Cita, id_consecutiva))
+        db.session.commit()
+
+
+def test_reprogramar_rechaza_empalme_con_cita_de_otro_registro(
+    app, client, token_recepcion, clinica_demo, cita_demo, monkeypatch
+):
+    monkeypatch.setitem(app.config, "RECEPTION_CLINIC_ID", clinica_demo.id_clinica)
+    with app.app_context():
+        db.session.add(Cita(
+            id_paciente=cita_demo[1],
+            id_medico=cita_demo[2],
+            id_clinica=clinica_demo.id_clinica,
+            fecha=date(2026, 10, 20),
+            hora=time(10, 30),
+            motivo="Otra cita",
+            estado="Agendada",
+        ))
+        db.session.commit()
+        id_otra_cita = db.session.query(Cita).filter_by(
+            fecha=date(2026, 10, 20), hora=time(10, 30)
+        ).one().id_cita
+        original = db.session.get(Cita, cita_demo[0])
+        horario_original = (original.fecha, original.hora)
+
+    response = client.post(
+        f"/api/citas/{cita_demo[0]}/reprogramar",
+        json={"fecha": "2026-10-20", "hora": "10:45"},
+        headers=_headers(token_recepcion),
+    )
+    assert response.status_code == 409
+    assert "empalma" in response.get_json()["error"]
+    with app.app_context():
+        original = db.session.get(Cita, cita_demo[0])
+        assert (original.fecha, original.hora) == horario_original
+        db.session.delete(db.session.get(Cita, id_otra_cita))
+        db.session.commit()
+
+
+def test_reprogramar_rechaza_cita_inexistente_o_de_otra_clinica(
+    app, client, token_recepcion, clinica_demo, cita_demo, monkeypatch
+):
+    monkeypatch.setitem(app.config, "RECEPTION_CLINIC_ID", clinica_demo.id_clinica)
+    no_existe = client.post(
+        "/api/citas/999999/reprogramar",
+        json={"fecha": "2026-10-19", "hora": "11:00"},
+        headers=_headers(token_recepcion),
+    )
+    assert no_existe.status_code == 404
+
+    with app.app_context():
+        otra_clinica = Clinica(
+            nombre="Otra clínica reprogramación",
+            direccion="Dirección de prueba",
+            estado=True,
+        )
+        db.session.add(otra_clinica)
+        db.session.flush()
+        cita = db.session.get(Cita, cita_demo[0])
+        cita.id_clinica = otra_clinica.id_clinica
+        db.session.commit()
+        id_otra_clinica = otra_clinica.id_clinica
+
+    fuera_de_alcance = client.post(
+        f"/api/citas/{cita_demo[0]}/reprogramar",
+        json={"fecha": "2026-10-19", "hora": "11:00"},
+        headers=_headers(token_recepcion),
+    )
+    assert fuera_de_alcance.status_code == 404
+
+    with app.app_context():
+        cita = db.session.get(Cita, cita_demo[0])
+        cita.id_clinica = clinica_demo.id_clinica
+        db.session.delete(db.session.get(Clinica, id_otra_clinica))
+        db.session.commit()
+
+
+@pytest.mark.parametrize("estado", ["Atendida", "Cancelada", "Reagendada"])
+def test_reprogramar_solo_acepta_estado_agendada(
+    app, client, token_recepcion, clinica_demo, cita_demo, monkeypatch, estado
+):
+    monkeypatch.setitem(app.config, "RECEPTION_CLINIC_ID", clinica_demo.id_clinica)
+    with app.app_context():
+        db.session.get(Cita, cita_demo[0]).estado = estado
+        db.session.commit()
+
+    response = client.post(
+        f"/api/citas/{cita_demo[0]}/reprogramar",
+        json={"fecha": "2026-10-19", "hora": "11:00"},
+        headers=_headers(token_recepcion),
+    )
+    assert response.status_code == 409
+    with app.app_context():
+        assert db.session.get(Cita, cita_demo[0]).estado == estado
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"fecha": "2026-02-30", "hora": "10:00"},
+        {"fecha": "2026-10-19", "hora": "24:00"},
+        {"fecha": "2026-10-19"},
+        {"fecha": "2026-10-19", "hora": "10:00", "estado": "Cancelada"},
+        {"fecha": "2026-10-19", "hora": "10:00", "id_clinica": 2},
+        {"fecha": "2026-10-19", "hora": "10:00", "id_medico": 2},
+        {"fecha": "2026-10-19", "hora": "10:00", "id_paciente": 2},
+    ],
+)
+def test_reprogramar_rechaza_datos_invalidos_o_no_permitidos(
+    client, token_recepcion, cita_demo, payload
+):
+    response = client.post(
+        f"/api/citas/{cita_demo[0]}/reprogramar",
+        json=payload,
+        headers=_headers(token_recepcion),
+    )
+    assert response.status_code == 422
+
+
+def test_solo_recepcion_puede_reprogramar(
+    client, token_admin, token_medico, token_recepcion, cita_demo
+):
+    ruta = f"/api/citas/{cita_demo[0]}/reprogramar"
+    payload = {"fecha": "2026-10-19", "hora": "11:00"}
+
+    assert client.post(ruta, json=payload).status_code == 401
+    assert client.post(
+        ruta, json=payload, headers=_headers(token_admin)
+    ).status_code == 403
+    assert client.post(
+        ruta, json=payload, headers=_headers(token_medico)
+    ).status_code == 403
+
+
+def test_fallo_de_commit_revierte_fecha_y_hora_de_reprogramacion(
+    app, client, token_recepcion, clinica_demo, cita_demo, monkeypatch
+):
+    monkeypatch.setitem(app.config, "RECEPTION_CLINIC_ID", clinica_demo.id_clinica)
+
+    def fallo_commit():
+        raise RuntimeError("fallo simulado")
+
+    monkeypatch.setattr(db.session, "commit", fallo_commit)
+    try:
+        response = client.post(
+            f"/api/citas/{cita_demo[0]}/reprogramar",
+            json={"fecha": "2026-10-19", "hora": "11:00"},
+            headers=_headers(token_recepcion),
+        )
+    finally:
+        monkeypatch.undo()
+
+    assert response.status_code == 500
+    with app.app_context():
+        cita = db.session.get(Cita, cita_demo[0])
+        assert cita.fecha == date(2026, 10, 17)
+        assert cita.hora == time(9, 30)
 
 
 def test_recepcion_cancela_cita_agendada_en_clinica_configurada(
