@@ -1,5 +1,21 @@
 // ─── Roles del sistema ───────────────────────────────────────────────────────
 export type Rol = "administrador" | "recepcion" | "medico";
+export type RolCuenta = "administrador" | "recepcion" | "medicos";
+
+export function rolVisualDeCuenta(rol: unknown): Rol | null {
+  if (rol === "administrador" || rol === "recepcion") return rol;
+  if (rol === "medicos") return "medico";
+  return null;
+}
+
+export function rutaInicioDeRol(rol: Rol): string {
+  const rutas: Record<Rol, string> = {
+    administrador: "/admin/dashboard",
+    recepcion: "/recepcion/agenda",
+    medico: "/medico/agenda",
+  };
+  return rutas[rol];
+}
 
 // ─── Estado de demostración ───────────────────────────────────────────────────
 export interface UsuarioDemo {
@@ -21,17 +37,26 @@ export interface PerfilAutenticado {
 }
 
 // ─── Citas ────────────────────────────────────────────────────────────────────
-export type EstadoCita = "programada" | "atendida" | "cancelada" | "reagendada";
+export type EstadoCita = "Agendada" | "Atendida" | "Cancelada" | "Reagendada";
 
 export interface Cita {
-  id: number;
-  paciente: string;
-  medico: string;
+  id_cita: number;
+  id_paciente: number;
+  nombre_paciente: string;
+  id_medico: number;
+  nombre_medico: string;
+  id_clinica: number;
   fecha: string;
   hora: string;
-  motivo: string;
+  motivo: string | null;
   estado: EstadoCita;
-  clinica?: string;
+}
+
+export interface PaginacionCitas {
+  pagina: number;
+  por_pagina: number;
+  total: number;
+  paginas: number;
 }
 
 // ─── Pacientes ────────────────────────────────────────────────────────────────
@@ -65,6 +90,7 @@ export interface Indicador {
 
 // ─── Contexto de demostración ─────────────────────────────────────────────────
 export interface DemoContextType {
+  autenticacionCargando: boolean;
   rolActivo: Rol;
   setRolActivo: (rol: Rol) => void;
   autenticado: boolean;

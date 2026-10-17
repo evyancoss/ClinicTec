@@ -4,7 +4,7 @@ import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { useDemo } from "../../store/demo-context";
 import { SelectorRolDemo } from "../shared/SelectorRolDemo";
-import type { Rol } from "../../types";
+import { rolVisualDeCuenta, rutaInicioDeRol, type Rol } from "../../types";
 
 // ─── Títulos de cada ruta ─────────────────────────────────────────────────────
 const titulos: Record<string, string> = {
@@ -17,13 +17,6 @@ const titulos: Record<string, string> = {
   "/admin/usuarios":      "Gestión de usuarios",
 };
 
-// Ruta de inicio por rol
-const rutaInicio: Record<Rol, string> = {
-  recepcion:     "/recepcion/agenda",
-  medico:        "/medico/agenda",
-  administrador: "/admin/dashboard",
-};
-
 export function AppLayout() {
   const [sidebarAbierto, setSidebarAbierto] = useState(false);
   const {
@@ -33,6 +26,11 @@ export function AppLayout() {
     usuarioAutenticado,
     modoDemo,
   } = useDemo();
+  const rolActual = modoDemo
+    ? rolActivo
+    : usuarioAutenticado
+      ? rolVisualDeCuenta(usuarioAutenticado.rol) ?? rolActivo
+      : rolActivo;
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -42,14 +40,14 @@ export function AppLayout() {
   function cambiarRol(nuevoRol: Rol) {
     if (!modoDemo) return;
     setRolActivo(nuevoRol);
-    navigate(rutaInicio[nuevoRol]);
+    navigate(rutaInicioDeRol(nuevoRol));
   }
 
   return (
     <div className="flex h-screen overflow-hidden bg-brand-50">
       {/* Sidebar */}
       <Sidebar
-        rol={rolActivo}
+        rol={rolActual}
         abierto={sidebarAbierto}
         onCerrar={() => setSidebarAbierto(false)}
       />

@@ -2,17 +2,17 @@ import type { EstadoCita } from "../../types";
 
 // ─── Badge de estado de cita ─────────────────────────────────────────────────
 const estilosEstado: Record<EstadoCita, string> = {
-  programada: "bg-brand-100 text-brand-800",
-  atendida:   "bg-brand-500 text-white",
-  cancelada:  "bg-red-100 text-red-700",
-  reagendada: "bg-amber-100 text-amber-800",
+  Agendada:   "bg-brand-100 text-brand-800",
+  Atendida:   "bg-brand-500 text-white",
+  Cancelada:  "bg-red-100 text-red-700",
+  Reagendada: "bg-amber-100 text-amber-800",
 };
 
 const etiquetasEstado: Record<EstadoCita, string> = {
-  programada: "Programada",
-  atendida:   "Atendida",
-  cancelada:  "Cancelada",
-  reagendada: "Reagendada",
+  Agendada:   "Agendada",
+  Atendida:   "Atendida",
+  Cancelada:  "Cancelada",
+  Reagendada: "Reagendada",
 };
 
 interface BadgeEstadoProps {

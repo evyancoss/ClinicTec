@@ -53,6 +53,11 @@ class Config:
         "http://127.0.0.1:5173",
     ]
 
+    # Clínica operativa para recepción/citas en esta instalación.
+    # Nunca se acepta una clínica enviada por el cliente.
+    RECEPTION_CLINIC_ID: int = 1
+    CITA_DURACION_MINUTOS: int = 60
+
     # ── JWT ───────────────────────────────────────────────────────────────────
     # JWT_SECRET_KEY se lee directamente en utils/security.py desde os.environ
     # para permitir recarga en pruebas. No se expone aquí.

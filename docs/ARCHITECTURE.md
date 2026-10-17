@@ -137,6 +137,17 @@ En caso de error:
 - Cada endpoint usa un decorador `@requiere_rol("recepcion", "administrador")` que extrae el rol del token y rechaza la petición si no coincide.
 - El backend es el guardián definitivo; el frontend solo mejora la experiencia del usuario.
 
+### 3.4 Agenda de citas
+
+- `GET /api/citas?fecha=AAAA-MM-DD` devuelve citas paginadas dentro del alcance autorizado: recepción se limita al `RECEPTION_CLINIC_ID` configurado en el servidor, y un médico a su propio perfil y clínica.
+- `GET /api/citas/<id>` aplica el mismo alcance; no se acepta un `id_medico` del cliente para ampliar permisos.
+- `POST /api/citas/` permite a recepción registrar una cita de 60 minutos. La clínica operativa se obtiene de la configuración del servidor (clínica 1 en esta instalación); se rechazan campos de clínica y estado enviados por el cliente.
+- `POST /api/citas/<id>/cancelar` permite a recepción cancelar una cita `Agendada` solo dentro de la clínica configurada en el servidor. No acepta un identificador de clínica del cliente, conserva los demás datos y no registra motivo de cancelación.
+- La tabla actual no almacena duración. La API aplica `CITA_DURACION_MINUTOS = 60` a citas nuevas e interpreta también las existentes como 60 minutos para detectar empalmes; no persiste una duración por cita.
+- La creación bloquea la fila del médico con `SELECT ... FOR UPDATE` y valida empalmes en la transacción. `Agendada` y `Atendida` bloquean el horario; `Cancelada` y `Reagendada` no. La intersección es semiabierta, por lo que citas consecutivas se permiten; se contemplan cruces de medianoche.
+- La reprogramación sigue pendiente: el esquema no registra una relación entre la cita anterior y su reemplazo. SQLite en memoria valida reglas funcionales, no el bloqueo concurrente real de PostgreSQL; esa garantía debe probarse en un PostgreSQL aislado.
+- La BD reportada no impone CHECK para los estados; la API debe validar `Agendada`, `Atendida`, `Cancelada` y `Reagendada`, y la interfaz traducirlos para presentación.
+
 ---
 
 ## 4. Base de datos (Supabase / PostgreSQL)

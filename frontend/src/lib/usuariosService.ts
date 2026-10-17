@@ -37,6 +37,11 @@ export interface AltaUsuario {
   correo?: string;
 }
 
+export type EdicionUsuario = Pick<
+  UsuarioSistema,
+  "nombre" | "ape_paterno" | "ape_materno"
+>;
+
 async function extraerDatos<T>(respuesta: ApiResponse<T>): Promise<T> {
   if (respuesta.error || respuesta.data === null) {
     throw new Error(respuesta.error ?? "Respuesta inesperada del servidor.");
@@ -56,6 +61,12 @@ export const usuariosService = {
   async crear(datos: AltaUsuario): Promise<UsuarioSistema> {
     return extraerDatos(
       await api.post<UsuarioSistema>("/api/usuarios/", datos),
+    );
+  },
+
+  async editar(idUsuario: number, datos: EdicionUsuario): Promise<UsuarioSistema> {
+    return extraerDatos(
+      await api.put<UsuarioSistema>(`/api/usuarios/${idUsuario}`, datos),
     );
   },
 };

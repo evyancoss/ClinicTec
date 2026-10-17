@@ -31,6 +31,7 @@ _CAMPOS_USUARIO = {
 _CAMPOS_MEDICO = {
     "id_clinica", "especialidad", "cedula_profesional", "telefono", "correo",
 }
+_CAMPOS_EDICION = {"nombre", "ape_paterno", "ape_materno"}
 
 
 def _validar_usuario(body: dict) -> list[str]:
@@ -140,6 +141,66 @@ def listar_clinicas_activas():
         {"id_clinica": clinica.id_clinica, "nombre": clinica.nombre}
         for clinica in clinicas
     ])
+
+
+@usuarios_bp.put("/<int:id_usuario>")
+@requiere_autenticacion
+@requiere_rol("administrador")
+def editar_usuario(id_usuario: int):
+    """Actualiza el nombre de la cuenta y su perfil médico relacionado."""
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict) or not body:
+        return err("Se requiere un cuerpo JSON.", 400)
+
+    campos_no_permitidos = set(body) - _CAMPOS_EDICION
+    if campos_no_permitidos:
+        return err(
+            "Solo se pueden editar nombre, apellido paterno y apellido materno.",
+            422,
+        )
+
+    errores = [
+        mensaje
+        for campo, etiqueta in (
+            ("nombre", "Nombre"),
+            ("ape_paterno", "Apellido paterno"),
+            ("ape_materno", "Apellido materno"),
+        )
+        if (mensaje := validar_nombre(body.get(campo), etiqueta))
+    ]
+    if errores:
+        return err("; ".join(errores), 422)
+
+    usuario = db.session.execute(
+        db.select(Usuario)
+        .options(joinedload(Usuario.medico))
+        .where(Usuario.id_usuario == id_usuario)
+    ).scalar_one_or_none()
+    if usuario is None:
+        return err("Usuario no encontrado.", 404)
+    if usuario.medico is not None:
+        medico = usuario.medico
+    else:
+        medico = None
+
+    try:
+        usuario.nombre = body["nombre"].strip()
+        usuario.ape_paterno = body["ape_paterno"].strip()
+        usuario.ape_materno = body["ape_materno"].strip()
+        if medico is not None:
+            medico.nombre = usuario.nombre
+            medico.ape_paterno = usuario.ape_paterno
+            medico.ape_materno = usuario.ape_materno
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return err("Los datos entran en conflicto con una restricción existente.", 409)
+    except Exception as exc:
+        db.session.rollback()
+        log.error("Error al editar usuario: %s", type(exc).__name__)
+        return err("Error al guardar los cambios del usuario.", 500)
+
+    return ok(_usuario_publico(usuario))
 
 
 @usuarios_bp.post("")

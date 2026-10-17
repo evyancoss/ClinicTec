@@ -6,6 +6,7 @@ import { Button } from "../../components/ui/Button";
 import { useDemo } from "../../store/demo-context";
 import { authService } from "../../lib/authService";
 import { setAccessToken } from "../../lib/api";
+import { rutaInicioDeRol, rolVisualDeCuenta } from "../../types";
 
 export function LoginPage() {
   const [email, setEmail] = useState("");
@@ -56,15 +57,17 @@ export function LoginPage() {
       setErrorPassword(respuesta.error ?? "No fue posible iniciar sesión.");
       return;
     }
+    const rolAutenticado = rolVisualDeCuenta(respuesta.data.perfil.rol);
+    if (!rolAutenticado) {
+      setErrorPassword("El perfil recibido no tiene un rol válido.");
+      return;
+    }
     setAccessToken(respuesta.data.access_token);
     setUsuarioAutenticado(respuesta.data.perfil);
     setModoDemo(false);
-    const rol = respuesta.data.perfil.rol === "medicos"
-      ? "medico"
-      : respuesta.data.perfil.rol;
-    setRolActivo(rol);
+    setRolActivo(rolAutenticado);
     setAutenticado(true);
-    navigate(rol === "medico" ? "/medico/pacientes" : "/recepcion/pacientes");
+    navigate(rutaInicioDeRol(rolAutenticado), { replace: true });
   }
 
   function entrarComoDemo() {

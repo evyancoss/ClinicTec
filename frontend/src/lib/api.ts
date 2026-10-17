@@ -17,6 +17,7 @@ export interface ApiResponse<T = unknown> {
 
 /** Token en memoria — se actualiza desde AuthContext al hacer login. */
 let _accessToken: string | null = null;
+let _unauthorizedHandler: (() => void) | null = null;
 
 export function setAccessToken(token: string | null) {
   _accessToken = token;
@@ -24,6 +25,10 @@ export function setAccessToken(token: string | null) {
 
 export function getAccessToken(): string | null {
   return _accessToken;
+}
+
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  _unauthorizedHandler = handler;
 }
 
 async function request<T>(
@@ -46,6 +51,10 @@ async function request<T>(
       credentials: "include", // necesario para la cookie de refresh
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
+
+    if (res.status === 401 && !path.startsWith("/api/auth/")) {
+      _unauthorizedHandler?.();
+    }
 
     try {
       return await res.json() as ApiResponse<T>;

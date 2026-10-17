@@ -94,11 +94,23 @@ ClinicTec es una aplicación web multi-rol para la gestión de clínicas médica
 ### Citas
 
 1. Una cita pertenece a una sola clínica.
-2. Un médico no puede tener dos citas al mismo tiempo en la misma clínica.
-3. Los estados válidos de una cita son: `programada`, `atendida`, `cancelada`, `reagendada`.
-4. Solo recepción puede crear, reagendar o cancelar citas.
-5. Solo el médico asignado puede registrar la consulta de esa cita.
-6. Una cita cancelada no puede ser atendida; debe crearse una nueva.
+2. Los estados canónicos almacenados son `Agendada`, `Atendida`, `Cancelada` y `Reagendada`; la interfaz puede traducirlos para presentación.
+3. En el esquema actual, cada cita nueva tiene una duración fija de 60 minutos; no se almacena ni acepta una duración enviada por el cliente.
+4. No se permiten citas superpuestas para el mismo médico. La API bloquea la fila del médico y comprueba intervalos semiabiertos de 60 minutos dentro de la transacción.
+5. En esta instalación, recepción opera sobre la clínica 1 configurada en el servidor; nunca se toma una clínica del cliente.
+6. Solo recepción puede crear o cancelar citas. La reprogramación aún no está implementada.
+7. Solo el médico asignado puede registrar la consulta de esa cita.
+8. Una cita cancelada no puede ser atendida; debe crearse una nueva.
+
+#### Duración, empalmes y reprogramación
+
+La tabla real `citas` conserva `fecha` (`DATE`) y `hora` (`TIME`) sin un campo de duración. Sin alterar el esquema, el servidor aplica la constante `CITA_DURACION_MINUTOS = 60` a las citas nuevas; no se puede modificar por cita hasta que exista una decisión y un cambio de esquema aprobados. Las citas históricas también se interpretan con 60 minutos para detección de empalmes, ya que no hay información de duración histórica disponible.
+
+Los intervalos se comparan como semiabiertos `[inicio, fin)`: dos citas consecutivas cuyo fin e inicio coinciden no se empalman. Se consideran citas del día anterior para cubrir cruces de medianoche. `Agendada` y `Atendida` bloquean; `Cancelada` y `Reagendada` no bloquean. La hora se interpreta como hora local sin zona almacenada; horario de verano y calendarios de atención quedan pendientes de una política.
+
+Al crear una cita, la API bloquea la fila del médico con `SELECT ... FOR UPDATE`, valida clínica, paciente, médico y empalme en la misma transacción, y conserva el bloqueo hasta commit o rollback. La reserva solo se serializa si los futuros escritores aplican el mismo protocolo. Las pruebas SQLite cubren lógica funcional, pero no prueban la semántica concurrente de PostgreSQL; esta debe verificarse en una instancia PostgreSQL aislada, nunca contra Supabase compartido.
+
+La reprogramación no se habilita: `citas` no tiene relación hacia la cita sustituida, así que no se puede auditar inequívocamente la cadena sin definir primero cómo representarla. No se modifica el esquema ni se inventa esa relación en esta fase. Cancelar cambia únicamente `Agendada` a `Cancelada`; no acepta clínica del cliente ni almacena motivo. Casos cubiertos por la validación: citas consecutivas, solapamiento parcial/anidado, mismo inicio, cruce de medianoche, estados que bloquean/liberan horario y rollback al fallar la transacción.
 
 ### Pacientes
 
@@ -111,10 +123,12 @@ ClinicTec es una aplicación web multi-rol para la gestión de clínicas médica
 
 ### Usuarios
 
-1. Un usuario pertenece a una clínica principal (puede ampliarse en fases futuras).
-2. Los usuarios desactivados no pueden iniciar sesión.
-3. Solo el administrador puede cambiar el rol de un usuario.
-4. Las contraseñas deben almacenarse con hash (bcrypt o Argon2); nunca en texto plano.
+1. La tabla `usuarios` no incluye `id_clinica` ni estado/activo. El perfil de médico puede relacionar una cuenta con una clínica por `medicos.id_usuario`; recepción no tiene vínculo de clínica en esta tabla.
+2. El administrador puede actualizar nombre y apellidos desde la cuenta; si tiene un perfil médico ligado por `medicos.id_usuario`, el servidor actualiza los nombres duplicados en ambas tablas en la misma transacción.
+3. La edición no cambia login, rol, contraseña, clínica, especialidad, cédula ni datos de contacto del perfil médico.
+4. El nombre de login (`usuario`), el rol y la contraseña no se modifican desde el formulario ordinario. El login es único; el cambio de contraseña requiere un flujo seguro separado y el rol impacta los privilegios/JWT.
+5. No existe una operación confirmada de activar/desactivar cuentas en el esquema actual. El campo `estado` de `medicos` no representa el estado de la cuenta de usuario.
+6. Las contraseñas deben almacenarse con hash Argon2id; nunca se exponen hashes ni contraseñas en respuestas.
 
 ### Recetas
 
@@ -133,7 +147,7 @@ Recepción
   → Busca paciente (o crea uno nuevo)
   → Selecciona médico disponible
   → Elige fecha y hora
-  → Confirma cita (estado: programada)
+  → Confirma cita (estado: Agendada, duración: 60 minutos)
 ```
 
 ### Flujo: atender una consulta

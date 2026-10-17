@@ -25,6 +25,7 @@ const navItems: Record<Rol, { ruta: string; etiqueta: string; Icono: React.Eleme
     { ruta: "/admin/dashboard",    etiqueta: "Dashboard",         Icono: LayoutDashboard },
     { ruta: "/admin/clinicas",     etiqueta: "Clínicas",          Icono: Building2 },
     { ruta: "/admin/usuarios",     etiqueta: "Usuarios",          Icono: UserCog },
+    { ruta: "/recepcion/pacientes",etiqueta: "Pacientes",         Icono: Users },
   ],
 };
 

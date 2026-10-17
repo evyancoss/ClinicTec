@@ -58,5 +58,5 @@ DATABASE_URL=postgresql+psycopg2://<usuario>:<contraseña>@<host>:<puerto>/<base
 | 3 | Autenticación y control de roles | ✅ Completada |
 | 4 | Módulo Recepción | ✅ Completada |
 | 5 | Módulos funcionales de pacientes y médicos | ✅ Completada |
-| 6 | Módulo Administrador | ⏳ Pendiente |
+| 6 | Administración y gestión de citas | 🚧 En desarrollo |
 | 7 | Consultas, recetas e historial clínico | ⏳ Pendiente |

@@ -1,37 +1,24 @@
-import { useState } from "react";
-import { CheckCircle2, RefreshCw, XCircle, AlertCircle } from "lucide-react";
+import { CheckCircle2, RefreshCw, XCircle, Info } from "lucide-react";
 import type { Cita } from "../../types";
 import { BadgeEstado } from "../ui/Badge";
 import { Button } from "../ui/Button";
-import { ToastDemo } from "../ui/ToastDemo";
 import { EstadoVacio } from "../ui/EstadoVacio";
 
 interface TablaCitasProps {
   citas: Cita[];
   modoRecepcion?: boolean;
+  onCancelarCita?: (cita: Cita) => void;
+  cancelandoId?: number | null;
 }
 
-export function TablaCitas({ citas, modoRecepcion = false }: TablaCitasProps) {
-  const [toast, setToast] = useState<string | null>(null);
-
-  function mostrarToast(msg: string) {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3000);
-  }
-
+export function TablaCitas({
+  citas,
+  modoRecepcion = false,
+  onCancelarCita,
+  cancelandoId = null,
+}: TablaCitasProps) {
   return (
     <div className="relative">
-      {/* Toast de demostración */}
-      {toast && (
-        <div className="fixed bottom-6 right-6 z-50 max-w-sm">
-          <ToastDemo
-            mensaje={toast}
-            tipo="info"
-            onCerrar={() => setToast(null)}
-          />
-        </div>
-      )}
-
       {/* Tabla */}
       <div className="overflow-x-auto rounded-xl border border-brand-200">
         {citas.length === 0 ? (
@@ -62,22 +49,23 @@ export function TablaCitas({ citas, modoRecepcion = false }: TablaCitasProps) {
           <tbody>
             {citas.map((cita, i) => (
               <tr
-                key={cita.id}
+                key={cita.id_cita}
                 className={`border-t border-brand-200 hover:bg-brand-100 transition-colors ${
                   i % 2 === 0 ? "bg-white" : "bg-brand-50"
                 }`}
               >
                 <td className="px-4 py-3 font-medium text-brand-800 whitespace-nowrap">
-                  {cita.hora}
+                  <span className="block">{cita.hora}</span>
+                  <span className="text-xs text-gray-500">{cita.fecha}</span>
                 </td>
                 <td className="px-4 py-3 font-medium text-gray-800">
-                  {cita.paciente}
+                  {cita.nombre_paciente}
                 </td>
                 <td className="px-4 py-3 text-gray-600 hidden md:table-cell">
-                  {cita.medico}
+                  {cita.nombre_medico}
                 </td>
                 <td className="px-4 py-3 text-gray-500 hidden lg:table-cell max-w-xs truncate">
-                  {cita.motivo}
+                  {cita.motivo || "—"}
                 </td>
                 <td className="px-4 py-3">
                   <BadgeEstado estado={cita.estado} />
@@ -85,51 +73,34 @@ export function TablaCitas({ citas, modoRecepcion = false }: TablaCitasProps) {
                 {modoRecepcion && (
                   <td className="px-4 py-3 hidden sm:table-cell">
                     <div className="flex items-center gap-1.5">
-                      {cita.estado === "programada" && (
+                      {cita.estado === "Agendada" && (
                         <>
                           <Button
                             variante="ghost"
                             tamaño="sm"
+                            disabled
                             icono={<CheckCircle2 size={14} />}
-                            onClick={() =>
-                              mostrarToast(
-                                "DEMO: En producción, esta acción marcaría la cita como atendida."
-                              )
-                            }
                             title="Marcar como atendida"
-                            aria-label={`Marcar como atendida: ${cita.paciente}`}
+                            aria-label={`Marcar como atendida: ${cita.nombre_paciente}`}
                           />
                           <Button
                             variante="ghost"
                             tamaño="sm"
+                            disabled
                             icono={<RefreshCw size={14} />}
-                            onClick={() =>
-                              mostrarToast(
-                                "DEMO: En producción, esta acción abriría el formulario de reagendado."
-                              )
-                            }
                             title="Reagendar"
-                            aria-label={`Reagendar cita: ${cita.paciente}`}
+                            aria-label={`Reagendar cita: ${cita.nombre_paciente}`}
                           />
                           <Button
                             variante="ghost"
                             tamaño="sm"
+                            disabled={!onCancelarCita || cancelandoId === cita.id_cita}
                             icono={<XCircle size={14} className="text-red-500" />}
-                            onClick={() =>
-                              mostrarToast(
-                                "DEMO: En producción, esta acción cancelaría la cita."
-                              )
-                            }
                             title="Cancelar"
-                            aria-label={`Cancelar cita: ${cita.paciente}`}
+                            aria-label={`Cancelar cita: ${cita.nombre_paciente}`}
+                            onClick={() => onCancelarCita?.(cita)}
                           />
                         </>
-                      )}
-                      {cita.estado !== "programada" && (
-                        <span className="text-xs text-gray-400 flex items-center gap-1">
-                          <AlertCircle size={12} />
-                          Sin acciones
-                        </span>
                       )}
                     </div>
                   </td>
@@ -140,6 +111,15 @@ export function TablaCitas({ citas, modoRecepcion = false }: TablaCitasProps) {
         </table>
         )}
       </div>
+      {modoRecepcion && (
+        <div className="flex items-start gap-2 px-3 py-2 text-xs text-gray-500">
+          <Info size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+          <span>
+            Cancelar una cita agendada está disponible en sesión real. Alta,
+            reprogramación y cambio a atendida siguen pendientes.
+          </span>
+        </div>
+      )}
     </div>
   );
 }
